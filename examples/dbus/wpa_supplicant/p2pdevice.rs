@@ -312,7 +312,7 @@ pub trait P2PDevice {
     #[zbus(property, name = "P2PDeviceConfig")]
     fn set_p2pdevice_config(
         &self,
-        value: std::collections::HashMap<&str, &zbus::zvariant::Value<'_>>,
+        value: std::collections::HashMap<&str, zbus::zvariant::Value<'_>>,
     ) -> zbus::Result<()>;
 
     /// PeerGO property
