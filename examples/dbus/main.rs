@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use futures_util::StreamExt;
 use std::collections::HashMap;
 use tokio;
@@ -5,35 +8,80 @@ use zbus::zvariant::Value;
 
 mod wpa_supplicant;
 
+
+macro_rules! trivial_error {
+    ($($args:tt)*) => {{
+        #[derive(Debug)]
+        struct TrivialError;
+        impl std::error::Error for TrivialError {}
+        impl std::fmt::Display for TrivialError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, $($args)*)
+            }
+        }
+        Box::new(TrivialError) as _
+    }}
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let conn = zbus::Connection::system().await?;
     let proxy = wpa_supplicant::wpa_supplicant::WpaSupplicantProxy::new(&conn).await?;
-    dbg!(&proxy);
 
     let caps = proxy.capabilities().await?;
-    dbg!(&caps);
+    info!("Scanning for p2p capabilities: {caps:?}");
 
-    let ifaces = proxy.interfaces().await?;
-    dbg!(&ifaces);
+    if !caps.iter().any(|s| s == "p2p") {
+        return Err(trivial_error!("wpa_supplicant has no p2p support"));
+    }
 
-    // Try to remove all existing interfaces.
-    let _ = futures_util::future::try_join_all(
-        ifaces.iter().map(|iface| proxy.remove_interface(iface)),
-    )
-    .await;
+    let (iface_path, p2pdevice) = match std::env::args().nth(1) {
+        Some(iface) => {
+            info!("Requested explicit interface {iface:?}");
+            let iface_path = match proxy.get_interface(&iface).await {
+                Ok(path) => path,
+                Err(e) => {
+                    info!("Couldn't get interface for {iface}, creating: {e}");
+                    let name = Value::new(iface);
+                    let mut args = HashMap::new();
+                    args.insert("Ifname", &name);
+                    proxy.create_interface(args).await?
+                }
+            };
 
-    let iface_path = {
-        let name = Value::new("wlo2");
-        let mut args = HashMap::new();
-        args.insert("Ifname", &name);
-        proxy.create_interface(args).await?
+            info!("Got path {iface_path:?}");
+            let proxy = wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface_path.clone()).await?;
+            (iface_path, proxy)
+        },
+        None => {
+            info!("Looking for interfaces with p2p support");
+
+            let ifaces = proxy.interfaces().await?;
+            info!("Got interfaces: {ifaces:?}");
+
+            let mut result = None;
+            for iface in ifaces {
+                info!("trying {iface}");
+                match wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface.clone()).await {
+                    Ok(p) => {
+                        result = Some((iface, p));
+                        break;
+                    },
+                    Err(e) => {
+                        info!("Creating P2P proxy for {iface} failed: {e}");
+                    },
+                }
+            }
+            match result {
+                Some(r) => r,
+                None => return Err(trivial_error!("Couldn't create P2P proxy for any interface")),
+            }
+        },
     };
 
-    dbg!(&iface_path);
-
-    // let iface = wpa_supplicant::interface::InterfaceProxy::new(&conn, &iface_path).await?;
-    let p2pdevice = wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface_path).await?;
+    info!("Using interface {iface_path:?}");
     dbg!(&p2pdevice);
 
     let cur_config = p2pdevice.p2pdevice_config().await?;
