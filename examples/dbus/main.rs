@@ -82,10 +82,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     info!("Using interface {iface_path:?}");
-    dbg!(&p2pdevice);
 
     let cur_config = p2pdevice.p2pdevice_config().await?;
-    dbg!(&cur_config);
+    info!("Initial device config: {cur_config:?}");
 
     p2pdevice
         .set_p2pdevice_config({
@@ -97,12 +96,179 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     // Start the find operation.
+    info!("Starting find operation");
     p2pdevice.find(HashMap::default()).await?;
 
-    let mut device_found_stream = p2pdevice.receive_device_found().await?;
-    while let Some(msg) = device_found_stream.next().await {
-        dbg!(&msg);
-    }
+    let mut device_found = p2pdevice.receive_device_found().await?;
+    let mut device_lost = p2pdevice.receive_device_lost().await?;
+
+    let mut invitation_received = p2pdevice.receive_invitation_received().await?;
+
+    let mut group_started = p2pdevice.receive_group_started().await?;
+    let mut group_finished = p2pdevice.receive_group_finished().await?;
+
+    let mut persistent_group_added = p2pdevice.receive_persistent_group_added().await?;
+    let mut persistent_group_removed = p2pdevice.receive_persistent_group_removed().await?;
+
+    let mut pd_failure = p2pdevice.receive_provision_discovery_failure().await?;
+    let mut pd_req_display_pin = p2pdevice.receive_provision_discovery_request_display_pin().await?;
+    let mut pd_rsp_display_pin = p2pdevice.receive_provision_discovery_response_display_pin().await?;
+    let mut pd_req_enter_pin = p2pdevice.receive_provision_discovery_request_enter_pin().await?;
+    let mut pd_rsp_enter_pin = p2pdevice.receive_provision_discovery_response_enter_pin().await?;
+    let mut pd_pbc_req = p2pdevice.receive_provision_discovery_pbcrequest().await?;
+    let mut pd_pbc_rsp = p2pdevice.receive_provision_discovery_pbcresponse().await?;
+
+    // TODO?
+    // ProvisionDiscoveryPBCRequest(o: peer_object)
+    // ProvisionDiscoveryPBCResponse(o: peer_object)
+    // ProvisionDiscoveryFailure
+    //
+    // Properties
+    // TODO? This seems silly (as noted in the docs, there can be concurrent groups so watching
+    // the group property doesn't make much sense).
+    // let mut group_changed = p2pdevice.receive_group_changed().await;
+    let mut peers_changed = p2pdevice.receive_peers_changed().await;
+    let mut persistent_groups_changed = p2pdevice.receive_persistent_groups_changed().await;
+
+    futures_util::try_join!(
+        async {
+            while let Some(msg) = device_found.next().await {
+                let args = msg.args()?;
+                let device_path = args.path();
+                info!("Found device at {device_path}, try to connect?");
+                let mut args = HashMap::default();
+                let peer = Value::from(device_path);
+                let method = Value::from("display");
+                args.insert("peer", &peer);
+                args.insert("wps_method", &method);
+                let pin = p2pdevice.connect(args).await?;
+                info!("Connected with pin: {pin}");
+            }
+            Ok::<_, zbus::Error>(())
+        },
+        async {
+            while let Some(msg) = device_lost.next().await {
+                let args = msg.args()?;
+                let device_path = args.path();
+                info!("Lost device at {device_path}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = invitation_received.next().await {
+                let args = msg.args()?;
+                let props = args.properties();
+                info!("Got invitation: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = group_started.next().await {
+                let args = msg.args()?;
+                let props = args.properties();
+                info!("Group started: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = group_finished.next().await {
+                let args = msg.args()?;
+                let props = args.properties();
+                info!("Group finished: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = peers_changed.next().await {
+                let value = msg.get().await?;
+                info!("Peers changed: {value:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = persistent_group_added.next().await {
+                let args = msg.args()?;
+                let path = args.path();
+                let props = args.properties();
+                info!("Persistent Group added ({path}): {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = persistent_group_removed.next().await {
+                let args = msg.args()?;
+                let path = args.path();
+                info!("Persistent Group removed: {path:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = persistent_groups_changed.next().await {
+                let value = msg.get().await?;
+                info!("Persistent Groups changed: {value:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_failure.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                let status = args.status();
+                info!("Provision Discovery failure: {peer_object} ({status})");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_req_display_pin.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                let pin = args.pin();
+                info!("PD Request display pin: {peer_object} ({pin})");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_rsp_display_pin.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                let pin = args.pin();
+                info!("PD Response display pin: {peer_object} ({pin})");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_req_enter_pin.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                info!("PD Request enter pin: {peer_object}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_rsp_enter_pin.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                info!("PD Response enter pin: {peer_object}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_pbc_req.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                info!("PD PBC Request: {peer_object}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = pd_pbc_rsp.next().await {
+                let args = msg.args()?;
+                let peer_object = args.peer_object();
+                info!("PD PBC Response: {peer_object}");
+            }
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
