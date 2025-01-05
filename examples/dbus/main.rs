@@ -11,9 +11,13 @@ mod wpa_supplicant;
 
 macro_rules! trivial_error {
     ($($args:tt)*) => {{
-        #[derive(Debug)]
         struct TrivialError;
         impl std::error::Error for TrivialError {}
+        impl std::fmt::Debug for TrivialError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(self, f)
+            }
+        }
         impl std::fmt::Display for TrivialError {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, $($args)*)
@@ -147,8 +151,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let method = Value::from("display");
                 args.insert("peer", &peer);
                 args.insert("wps_method", &method);
-                let pin = p2pdevice.connect(args).await?;
-                info!("Connected with pin: {pin}");
+                match p2pdevice.connect(args).await {
+                    Ok(pin) => info!("Connected with pin: {pin}"),
+                    Err(e) => error!("Failed to connect to peer: {e:?}"),
+                }
             }
             Ok::<_, zbus::Error>(())
         },
