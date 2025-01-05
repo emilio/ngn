@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .set_p2pdevice_config({
             let mut config = HashMap::new();
             config.insert("DeviceName", "RustTest".into());
-            config.insert("GOIntent", 15u32.into());
+            config.insert("GOIntent", 14u32.into());
             config
         })
         .await?;
@@ -182,9 +182,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let mut args = HashMap::default();
                 let peer = Value::from(peer_path);
-                let method = Value::from("display");
+                let method = Value::from("pbc");
+                let go_intent = Value::from(14);
                 args.insert("peer", &peer);
                 args.insert("wps_method", &method);
+                args.insert("go_intent", &go_intent);
                 match p2pdevice.connect(args).await {
                     Ok(pin) => info!("Connected with pin: {pin}"),
                     Err(e) => error!("Failed to connect to peer: {e:?}"),
