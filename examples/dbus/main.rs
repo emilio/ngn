@@ -134,10 +134,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         async {
             while let Some(msg) = device_found.next().await {
                 let args = msg.args()?;
-                let device_path = args.path();
-                info!("Found device at {device_path}, try to connect?");
+                let peer_path = args.path().to_owned();
+                info!("Found device at {peer_path}, trying to connect");
+
+                let peer = wpa_supplicant::peer::PeerProxy::new(&conn, &peer_path).await?;
+                let dev_name = peer.device_name().await?;
+                let dev_addr = peer.device_address().await?;
+                info!("Peer name: {dev_name:?}, peer addr: {dev_addr:?}");
+
                 let mut args = HashMap::default();
-                let peer = Value::from(device_path);
+                let peer = Value::from(peer_path);
                 let method = Value::from("display");
                 args.insert("peer", &peer);
                 args.insert("wps_method", &method);
@@ -149,8 +155,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         async {
             while let Some(msg) = device_lost.next().await {
                 let args = msg.args()?;
-                let device_path = args.path();
-                info!("Lost device at {device_path}");
+                let peer_path = args.path();
+                info!("Lost device at {peer_path}");
             }
             Ok(())
         },
