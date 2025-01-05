@@ -21,7 +21,7 @@
 use zbus::proxy;
 #[proxy(
     interface = "fi.w1.wpa_supplicant1.Interface",
-    default_service = "fi.w1.wpa_supplicant1",
+    default_service = "fi.w1.wpa_supplicant1"
 )]
 pub trait Interface {
     /// ANQPGet method

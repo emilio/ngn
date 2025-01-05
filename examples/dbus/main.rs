@@ -8,7 +8,6 @@ use zbus::zvariant::Value;
 
 mod wpa_supplicant;
 
-
 macro_rules! trivial_error {
     ($($args:tt)*) => {{
         struct TrivialError;
@@ -56,9 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             info!("Got path {iface_path:?}");
-            let proxy = wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface_path.clone()).await?;
+            let proxy =
+                wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface_path.clone()).await?;
             (iface_path, proxy)
-        },
+        }
         None => {
             info!("Looking for interfaces with p2p support");
 
@@ -72,17 +72,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(p) => {
                         result = Some((iface, p));
                         break;
-                    },
+                    }
                     Err(e) => {
                         info!("Creating P2P proxy for {iface} failed: {e}");
-                    },
+                    }
                 }
             }
             match result {
                 Some(r) => r,
-                None => return Err(trivial_error!("Couldn't create P2P proxy for any interface")),
+                None => {
+                    return Err(trivial_error!(
+                        "Couldn't create P2P proxy for any interface"
+                    ))
+                }
             }
-        },
+        }
     };
 
     info!("Using interface {iface_path:?}");
@@ -125,10 +129,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut persistent_group_removed = p2pdevice.receive_persistent_group_removed().await?;
 
     let mut pd_failure = p2pdevice.receive_provision_discovery_failure().await?;
-    let mut pd_req_display_pin = p2pdevice.receive_provision_discovery_request_display_pin().await?;
-    let mut pd_rsp_display_pin = p2pdevice.receive_provision_discovery_response_display_pin().await?;
-    let mut pd_req_enter_pin = p2pdevice.receive_provision_discovery_request_enter_pin().await?;
-    let mut pd_rsp_enter_pin = p2pdevice.receive_provision_discovery_response_enter_pin().await?;
+    let mut pd_req_display_pin = p2pdevice
+        .receive_provision_discovery_request_display_pin()
+        .await?;
+    let mut pd_rsp_display_pin = p2pdevice
+        .receive_provision_discovery_response_display_pin()
+        .await?;
+    let mut pd_req_enter_pin = p2pdevice
+        .receive_provision_discovery_request_enter_pin()
+        .await?;
+    let mut pd_rsp_enter_pin = p2pdevice
+        .receive_provision_discovery_response_enter_pin()
+        .await?;
     let mut pd_pbc_req = p2pdevice.receive_provision_discovery_pbcrequest().await?;
     let mut pd_pbc_rsp = p2pdevice.receive_provision_discovery_pbcresponse().await?;
 

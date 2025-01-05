@@ -21,7 +21,7 @@
 use zbus::proxy;
 #[proxy(
     interface = "fi.w1.wpa_supplicant1.Interface.P2PDevice",
-    default_service = "fi.w1.wpa_supplicant1",
+    default_service = "fi.w1.wpa_supplicant1"
 )]
 pub trait P2PDevice {
     /// AddPersistentGroup method
