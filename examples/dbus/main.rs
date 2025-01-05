@@ -264,7 +264,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = go_negotiation_success.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
-                info!("GO negotiation failed: {props:?}");
+                info!("GO negotiation succeeded: {props:?}");
             }
             Ok(())
         },
