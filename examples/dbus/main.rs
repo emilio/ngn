@@ -103,13 +103,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting find operation");
     p2pdevice.find(HashMap::default()).await?;
 
+    let mut find_stopped = p2pdevice.receive_find_stopped().await?;
+
     let mut device_found = p2pdevice.receive_device_found().await?;
     let mut device_lost = p2pdevice.receive_device_lost().await?;
 
     let mut invitation_received = p2pdevice.receive_invitation_received().await?;
+    let mut invitation_result = p2pdevice.receive_invitation_result().await?;
+
+    let mut wps_failed = p2pdevice.receive_wps_failed().await?;
 
     let mut group_started = p2pdevice.receive_group_started().await?;
     let mut group_finished = p2pdevice.receive_group_finished().await?;
+    let mut group_formation_failure = p2pdevice.receive_group_formation_failure().await?;
+
+    let mut go_negotiation_request = p2pdevice.receive_gonegotiation_request().await?;
+    let mut go_negotiation_success = p2pdevice.receive_gonegotiation_success().await?;
+    let mut go_negotiation_failure = p2pdevice.receive_gonegotiation_failure().await?;
 
     let mut persistent_group_added = p2pdevice.receive_persistent_group_added().await?;
     let mut persistent_group_removed = p2pdevice.receive_persistent_group_removed().await?;
@@ -122,11 +132,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pd_pbc_req = p2pdevice.receive_provision_discovery_pbcrequest().await?;
     let mut pd_pbc_rsp = p2pdevice.receive_provision_discovery_pbcresponse().await?;
 
-    // TODO?
-    // ProvisionDiscoveryPBCRequest(o: peer_object)
-    // ProvisionDiscoveryPBCResponse(o: peer_object)
-    // ProvisionDiscoveryFailure
-    //
     // Properties
     // TODO? This seems silly (as noted in the docs, there can be concurrent groups so watching
     // the group property doesn't make much sense).
@@ -135,6 +140,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut persistent_groups_changed = p2pdevice.receive_persistent_groups_changed().await;
 
     futures_util::try_join!(
+        async {
+            while let Some(msg) = wps_failed.next().await {
+                info!("WPS failed");
+                let args = msg.args()?;
+                let args = args.args();
+                error!("WPS failed: {args:?}");
+            }
+            Ok::<_, zbus::Error>(())
+        },
+        async {
+            while let Some(_msg) = find_stopped.next().await {
+                info!("Find stopped, restarting");
+                p2pdevice.find(HashMap::default()).await?;
+            }
+            Ok(())
+        },
         async {
             while let Some(msg) = device_found.next().await {
                 let args = msg.args()?;
@@ -156,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => error!("Failed to connect to peer: {e:?}"),
                 }
             }
-            Ok::<_, zbus::Error>(())
+            Ok(())
         },
         async {
             while let Some(msg) = device_lost.next().await {
@@ -175,6 +196,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         },
         async {
+            while let Some(msg) = invitation_result.next().await {
+                let args = msg.args()?;
+                let props = args.invite_result();
+                info!("Got invitation result: {props:?}");
+            }
+            Ok(())
+        },
+        async {
             while let Some(msg) = group_started.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
@@ -187,6 +216,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let args = msg.args()?;
                 let props = args.properties();
                 info!("Group finished: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = group_formation_failure.next().await {
+                let args = msg.args()?;
+                let props = args.reason();
+                info!("Group formation failure: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = go_negotiation_failure.next().await {
+                let args = msg.args()?;
+                let props = args.properties();
+                info!("GO negotation failed: {props:?}");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = go_negotiation_request.next().await {
+                let args = msg.args()?;
+                let path = args.path();
+                let passwd_id = args.dev_passwd_id();
+                let go_intent = args.device_go_intent();
+                info!("GO negotation request from {path} ({passwd_id} / {go_intent})");
+            }
+            Ok(())
+        },
+        async {
+            while let Some(msg) = go_negotiation_success.next().await {
+                let args = msg.args()?;
+                let props = args.properties();
+                info!("GO negotation failed: {props:?}");
             }
             Ok(())
         },
