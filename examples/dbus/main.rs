@@ -244,7 +244,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = go_negotiation_failure.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
-                info!("GO negotation failed: {props:?}");
+                info!("GO negotiation failed: {props:?}");
             }
             Ok(())
         },
@@ -254,7 +254,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let path = args.path();
                 let passwd_id = args.dev_passwd_id();
                 let go_intent = args.device_go_intent();
-                info!("GO negotation request from {path} ({passwd_id} / {go_intent})");
+                info!("GO negotiation request from {path} ({passwd_id} / {go_intent})");
             }
             Ok(())
         },
@@ -262,7 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = go_negotiation_success.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
-                info!("GO negotation failed: {props:?}");
+                info!("GO negotiation failed: {props:?}");
             }
             Ok(())
         },
