@@ -163,8 +163,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         async {
             while let Some(_msg) = find_stopped.next().await {
-                info!("Find stopped, restarting");
-                p2pdevice.find(HashMap::default()).await?;
+                info!("Find stopped");
+                // TODO: Maybe restart?
+                // p2pdevice.find(HashMap::default()).await?;
             }
             Ok(())
         },
