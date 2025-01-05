@@ -4,5 +4,6 @@
 pub mod group;
 pub mod interface;
 pub mod p2pdevice;
+pub mod peer;
 pub mod wpa_supplicant;
 pub mod wps;
