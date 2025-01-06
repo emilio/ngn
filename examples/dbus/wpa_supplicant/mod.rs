@@ -3,6 +3,8 @@
 
 pub mod group;
 pub mod interface;
+pub mod mesh;
+pub mod network;
 pub mod p2pdevice;
 pub mod peer;
 pub mod wpa_supplicant;

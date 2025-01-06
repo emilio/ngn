@@ -222,7 +222,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = group_started.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
+                // This signal is only sent to the GO.
                 info!("Group started: {props:?}");
+                let interface_path = match &props.get("interface_object") {
+                    Some(&Value::ObjectPath(ref o)) => o.to_owned(),
+                    other => {
+                        error!("Expected an interface object path, got {other:?}");
+                        continue;
+                    }
+                };
+                let iface = wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
+                let network_path = iface.current_network().await?;
+                info!("Current network path is {network_path:?}");
+                let network = wpa_supplicant::network::NetworkProxy::new(&conn, network_path).await?;
+                let enabled = network.enabled().await?;
+                let props = network.properties().await?;
+                info!("Properties: {props:?}, enabled: {enabled:?}");
+
+                /* Seems this should work but doesn't.
+                let mut network_args = HashMap::new();
+                let network_address = Value::from("192.168.4.1/24");
+                let dhcp_server = Value::from(true);
+                network_args.insert("Address", &network_address);
+                network_args.insert("DHCPServer", &dhcp_server);
+                let network_path = iface.add_network(network_args).await?;
+                debug!("Created network with path {network_path:?}");
+                */
             }
             Ok(())
         },
@@ -265,6 +290,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let args = msg.args()?;
                 let props = args.properties();
                 info!("GO negotiation succeeded: {props:?}");
+                let is_go = props.get("role_go") == Some(&Value::from("GO"));
+                if is_go {
+                    info!("We're the group owner");
+                }
             }
             Ok(())
         },
