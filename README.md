@@ -8,7 +8,7 @@
 
 Gotchas:
 
- * Make sure the interface is not managed via networkmanager. Can be done via something like `nmcli device set wlo2 managed no`.
+ * Make sure the interface is not managed via networkmanager. Can be done via something like `nmcli device set wlo2 managed no`. Actually this might not be needed after all.
  * If you get dbus access errors when using wpa_supplicant's dbus interface, see which permissions are used for the messages. For example if you're using `dbus-broker`, you might need to edit something like `/usr/share/dbus-1/system.d/wpa_supplicant.conf` to grant your user (or the `wheel` group) the relevant permissions.
  * There's no chance of having multiple p2p "contexts" / interfaces per device per spec, however there can be multiple groups: https://lists.infradead.org/pipermail/hostap/2015-September/033754.html
  * I got various wpa_supplicant crashes. Was ready to submit a patch but it's fixed upstream: https://w1.fi/cgit/hostap/commit/?id=015f6a5a0cd1c8b0d40441b9fd9e4c8658bc9493
@@ -158,6 +158,9 @@ Gotchas:
 [275458.902568] iwlwifi 0000:00:14.3: CNVI_SCU_SEQ_DATA_DW9: 0x0
 [275458.904413] iwlwifi 0000:00:14.3: RFIm is deactivated, reason = 4
 ```
+
+ * I got some empty error messages for wpa_supplicant's P2P mode.
+  * Fix in https://lists.infradead.org/pipermail/hostap/2025-January/043247.html
 
 # Other links to keep track of
 
