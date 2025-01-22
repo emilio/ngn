@@ -173,12 +173,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = device_found.next().await {
                 let args = msg.args()?;
                 let peer_path = args.path().to_owned();
-                info!("Found device at {peer_path}, trying to connect");
+                info!("Found device at {peer_path}");
 
-                let peer = wpa_supplicant::peer::PeerProxy::new(&conn, &peer_path).await?;
-                let dev_name = peer.device_name().await?;
-                let dev_addr = peer.device_address().await?;
-                info!("Peer name: {dev_name:?}, peer addr: {dev_addr:?}");
+                {
+                    let peer = wpa_supplicant::peer::PeerProxy::new(&conn, &peer_path).await?;
+                    let dev_name = peer.device_name().await?;
+                    let dev_addr = peer.device_address().await?;
+                    info!("Peer name: {dev_name:?}, peer addr: {dev_addr:?}");
+
+                    if !dev_name.starts_with("Rust") {
+                        continue;
+                    }
+                }
 
                 let mut args = HashMap::default();
                 let peer = Value::from(peer_path);
