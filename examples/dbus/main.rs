@@ -237,6 +237,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
                 };
+                info!("Current interface path is {interface_path:?}");
                 let iface = wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
                 let network_path = iface.current_network().await?;
                 info!("Current network path is {network_path:?}");
