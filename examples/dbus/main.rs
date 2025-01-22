@@ -61,6 +61,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(trivial_error!("wpa_supplicant has no p2p support"));
     }
 
+    // TODO: Maybe remove this once stuff works more reliably.
+    proxy.set_debug_level("debug").await?;
+
     let (iface_path, p2pdevice) = match std::env::args().nth(1) {
         Some(iface) => {
             info!("Requested explicit interface {iface:?}");
