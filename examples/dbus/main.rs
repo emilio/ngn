@@ -2,7 +2,7 @@
 extern crate log;
 
 use futures_util::StreamExt;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use tokio;
 use zbus::zvariant::Value;
 
@@ -24,6 +24,27 @@ macro_rules! trivial_error {
         }
         Box::new(TrivialError) as _
     }}
+}
+
+async fn retry<T, E, Fut>(mut count: usize, mut thing: impl FnMut() -> Fut) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::error::Error,
+{
+    assert!(count > 0);
+    loop {
+        match thing().await {
+            Ok(r) => return Ok(r),
+            Err(e) => {
+                count -= 1;
+                error!("retry: {e}, {count} retries left");
+                if count == 0 {
+                    return Err(e);
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
 }
 
 #[tokio::main]
@@ -238,10 +259,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
                 info!("Current interface path is {interface_path:?}");
-                let iface = wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
-                let network_path = iface.current_network().await?;
+                let iface =
+                    wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
+                info!("Successfully created interface proxy");
+                let network_path = retry(3, || iface.current_network()).await?;
                 info!("Current network path is {network_path:?}");
-                let network = wpa_supplicant::network::NetworkProxy::new(&conn, network_path).await?;
+                let network =
+                    wpa_supplicant::network::NetworkProxy::new(&conn, network_path).await?;
                 let enabled = network.enabled().await?;
                 let props = network.properties().await?;
                 info!("Properties: {props:?}, enabled: {enabled:?}");
