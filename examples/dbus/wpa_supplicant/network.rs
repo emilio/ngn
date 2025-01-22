@@ -4,7 +4,7 @@
 use zbus::proxy;
 #[proxy(
     interface = "fi.w1.wpa_supplicant1.Interface.Mesh",
-    default_service = "fi.w1.wpa_supplicant1",
+    default_service = "fi.w1.wpa_supplicant1"
 )]
 pub trait Network {
     /// Enabled property
@@ -13,5 +13,7 @@ pub trait Network {
 
     /// Properties property
     #[zbus(property)]
-    fn properties(&self) -> zbus::Result<std::collections::HashMap<String, zbus::zvariant::OwnedValue>>;
+    fn properties(
+        &self,
+    ) -> zbus::Result<std::collections::HashMap<String, zbus::zvariant::OwnedValue>>;
 }
