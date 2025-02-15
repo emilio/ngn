@@ -1,0 +1,79 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[margin=3cm]{geometry}
+\usepackage[spanish]{babel}
+\usepackage{hyperref} % For links
+\usepackage{titling} % Convenient access to title / author / etc
+\usepackage{graphicx} % For images
+\usepackage[indent=20pt]{parskip}
+\usepackage{listings}
+\input{build/pandoc-macros.tex} % For syntax highlighting
+
+\title{
+  \textbf{Biblioteca para comunicación directa entre dispositivos basada en tecnologías P2P} \\
+  \vspace{0.5em}
+  \small \textbf{Library for direct communication between devices based on P2P technologies}
+}
+
+\author{
+  Emilio Cobos Álvarez (\texttt{emiliocobos@usal.es})
+}
+
+\date{Julio de 2025}
+
+\begin{document} 
+
+\begin{titlepage}
+\begin{center}
+  {\Large \thetitle}
+
+  \vspace{3em}
+
+  {\large Trabajo de Fin de Grado}
+
+  \vspace{0.5em}
+
+  \textsc{Grado en Ingeniería Informática}
+
+  \vspace{2em}
+
+  \includegraphics[width=0.5\textwidth]{res/usal-logo.pdf}
+
+  \vspace{2em}
+
+  \thedate
+
+  \vspace{2em}
+
+  {\large \textbf{Autor}}
+
+  \vspace{0.5em}
+
+  \theauthor
+
+  \vspace{2em}
+
+  {\large \textbf{Tutores}}
+
+  \vspace{0.5em}
+
+  Guillermo González Talaván (\texttt{gyermo@usal.es}) \\ Pedro Martín Vallejo Llamas (\texttt{pedrito@usal.es})
+\end{center}
+\end{titlepage}
+
+\pagenumbering{gobble}
+\input{00-cert.tex}
+
+\clearpage
+
+\input{00-abstract.tex}
+
+\clearpage
+
+\pagenumbering{arabic}
+
+\tableofcontents
+
+\input{build/01-example.tex}
+
+\end{document}
