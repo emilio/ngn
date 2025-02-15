@@ -4,13 +4,14 @@ extern crate log;
 use futures_util::StreamExt;
 use macaddr::MacAddr;
 use std::{
-    cell::RefCell,
     collections::HashMap,
     net::{Ipv6Addr, SocketAddrV6},
     time::Duration,
 };
-use tokio;
+use tokio::{self, net::UdpSocket};
 use zbus::zvariant::Value;
+
+const PORT: u16 = 9000;
 
 mod wpa_supplicant;
 
@@ -65,6 +66,21 @@ where
             }
         }
     }
+}
+
+fn to_mac_addr(buff: &[u8]) -> Option<MacAddr> {
+    let len = buff.len();
+    if len != 6 && len != 8 {
+        return None;
+    }
+    // FIXME: Seems this could be cleaner.
+    Some(if len == 6 {
+        let buff6: [u8; 6] = std::array::from_fn(|i| buff[i]);
+        MacAddr::from(buff6)
+    } else {
+        let buff8: [u8; 8] = std::array::from_fn(|i| buff[i]);
+        MacAddr::from(buff8)
+    })
 }
 
 fn dbus_mac_addr(value: &Value) -> Option<MacAddr> {
@@ -247,9 +263,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut peers_changed = p2pdevice.receive_peers_changed().await;
     let mut persistent_groups_changed = p2pdevice.receive_persistent_groups_changed().await;
 
-    // HACK, we should keep track of all peers and so on.
-    let last_peer_addr: RefCell<Option<Ipv6Addr>> = RefCell::new(None);
-
     futures_util::try_join!(
         async {
             while let Some(msg) = wps_failed.next().await {
@@ -327,9 +340,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             while let Some(msg) = group_started.next().await {
                 let args = msg.args()?;
                 let props = args.properties();
-                // This signal is only sent to the GO.
                 info!("Group started: {props:?}");
-                let interface_path = match &props.get("interface_object") {
+                let interface_path = match props.get("interface_object") {
                     Some(&Value::ObjectPath(ref o)) => o.to_owned(),
                     other => {
                         error!("Expected an interface object path, got {other:?}");
@@ -340,18 +352,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let iface =
                     wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
                 info!("Successfully created interface proxy");
-                let name = iface.ifname().await?;
-                info!("Interface name is {name:?}");
-                let state = iface.state().await?;
-                info!("Interface state is {state:?}");
-                if let Some(local_link) = last_peer_addr.borrow_mut().take() {
-                    let scope_id = unsafe {
-                        libc::if_nametoindex(std::ffi::CString::new(name).unwrap().as_ptr())
-                    };
-                    assert_ne!(scope_id, 0, "Interface should exist");
-                    let socket_addr =
-                        SocketAddrV6::new(local_link, 8080, /* flowinfo = */ 0, scope_id);
-                    info!("Peer sockaddr: {socket_addr:?}");
+                let iface_name = iface.ifname().await?;
+                info!("Interface name is {iface_name:?}");
+                let iface_state = iface.state().await?;
+                info!("Interface state is {iface_state:?}");
+
+                let scope_id = unsafe {
+                    libc::if_nametoindex(std::ffi::CString::new(iface_name).unwrap().as_ptr())
+                };
+                info!("Interface scope id is {scope_id:?}");
+
+                let group_path = match props.get("group_object") {
+                    Some(Value::ObjectPath(ref o)) => o.to_owned(),
+                    other => {
+                        error!("Expected a group object path, got {other:?}");
+                        continue;
+                    }
+                };
+
+                let group = wpa_supplicant::group::GroupProxy::new(&conn, group_path).await?;
+                let group_bssid = group.bssid().await?;
+                let Some(go_iface_addr) = to_mac_addr(&group_bssid) else {
+                    error!("Expected a valid mac address, got {group_bssid:?}");
+                    continue;
+                };
+                info!("Group BSSID (GO interface address) is {go_iface_addr:?}");
+
+                let is_go = props.get("role") == Some(&Value::from("GO"));
+                let local_addr = SocketAddrV6::new(
+                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+                    PORT,
+                    /* flowinfo = */ 0,
+                    scope_id,
+                );
+                info!("Creating socket in {local_addr:?}");
+                let socket = UdpSocket::bind(local_addr).await?;
+                if is_go {
+                    loop {
+                        let mut buf = [0u8; 1024];
+                        match socket.recv_from(&mut buf).await {
+                            Ok((len, sender)) => info!("Got msg from {sender:?}: {:?}", String::from_utf8_lossy(&buf[..len])),
+                            Err(e) => error!("Error reading from socket {e:?}"),
+                        }
+                    }
+                } else {
+                    let go_local_link_addr = mac_addr_to_local_link_address(&go_iface_addr);
+                    let go_socket_addr =
+                        SocketAddrV6::new(go_local_link_addr, PORT, /* flowinfo = */ 0, scope_id);
+                    info!("We're a client, trying to connect to go @ {go_socket_addr:?}");
+                    socket.connect(go_socket_addr).await?;
+                    for i in 0..3 {
+                        info!("Sending message {i} over the wire!");
+                        socket.send(b"hi there!").await?;
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
                 }
             }
             Ok(())
@@ -407,9 +461,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("Peer iface address: {interface_addr:}");
                 let local_link = mac_addr_to_local_link_address(&interface_addr);
                 info!("Peer iface local link address: {local_link:?}");
-
-                // TODO: Turn this into a real address once the interface is up.
-                *last_peer_addr.borrow_mut() = Some(local_link);
             }
             Ok(())
         },
