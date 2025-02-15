@@ -8,7 +8,11 @@ use std::{
     net::{Ipv6Addr, SocketAddrV6},
     time::Duration,
 };
-use tokio::{self, net::UdpSocket};
+use tokio::{
+    self,
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+};
 use zbus::zvariant::Value;
 
 const PORT: u16 = 9000;
@@ -380,30 +384,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let is_go = props.get("role") == Some(&Value::from("GO"));
                 let local_addr = SocketAddrV6::new(
-                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
                     PORT,
                     /* flowinfo = */ 0,
                     scope_id,
                 );
-                info!("Creating socket in {local_addr:?}");
-                let socket = UdpSocket::bind(local_addr).await?;
+                let go_local_link_addr = mac_addr_to_local_link_address(&go_iface_addr);
+                let go_socket_addr =
+                    SocketAddrV6::new(go_local_link_addr, PORT, /* flowinfo = */ 0, scope_id);
+                info!("GO socket addr is {go_socket_addr:?}, local addr is {local_addr:?}");
                 if is_go {
+                    info!("Creating GO receiver");
+                    // Shamelessly taken from
+                    // https://github.com/tokio-rs/tokio/blob/master/examples/echo.rs
+                    let listener = TcpListener::bind(local_addr).await?;
                     loop {
-                        let mut buf = [0u8; 1024];
-                        match socket.recv_from(&mut buf).await {
-                            Ok((len, sender)) => info!("Got msg from {sender:?}: {:?}", String::from_utf8_lossy(&buf[..len])),
-                            Err(e) => error!("Error reading from socket {e:?}"),
-                        }
+                        let (mut socket, _) = listener.accept().await?;
+                        tokio::spawn(async move {
+                            let mut buf = [0u8; 1024];
+                            loop {
+                                let n = match socket.read(&mut buf).await {
+                                    Ok(n) => n,
+                                    Err(e) => {
+                                        error!("Failed to read data from socket: {e}");
+                                        break;
+                                    }
+                                };
+
+                                if n == 0 {
+                                    return;
+                                }
+
+                                info!(
+                                    "Got message from socket: {:?}",
+                                    String::from_utf8_lossy(&buf[..n])
+                                );
+                            }
+                        });
                     }
                 } else {
-                    let go_local_link_addr = mac_addr_to_local_link_address(&go_iface_addr);
-                    let go_socket_addr =
-                        SocketAddrV6::new(go_local_link_addr, PORT, /* flowinfo = */ 0, scope_id);
-                    info!("We're a client, trying to connect to go @ {go_socket_addr:?}");
-                    socket.connect(go_socket_addr).await?;
+                    info!("We're a client, creating socket in {local_addr:?}");
+                    let mut stream = TcpStream::connect(go_socket_addr).await?;
                     for i in 0..3 {
                         info!("Sending message {i} over the wire!");
-                        socket.send(b"hi there!").await?;
+                        stream.write_all(b"hi there!").await?;
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
