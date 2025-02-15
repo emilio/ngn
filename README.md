@@ -165,3 +165,8 @@ Gotchas:
 # Other links to keep track of
 
  * https://github.com/dbus2/zbus/issues/1180
+
+---
+
+ * Nice realization, that all along you can get a link-local address from a MAC address: https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java;l=5894;drc=725fc18d701f2474328b8f21710da13d9bbb7eaf
+ * But the above for some reason only gets the right group owner address, not peer address, because the peer asks the group owner for a different address (or something along those lines?).

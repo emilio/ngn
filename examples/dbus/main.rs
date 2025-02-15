@@ -2,7 +2,13 @@
 extern crate log;
 
 use futures_util::StreamExt;
-use std::{collections::HashMap, time::Duration};
+use macaddr::MacAddr;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    net::{Ipv6Addr, SocketAddrV6},
+    time::Duration,
+};
 use tokio;
 use zbus::zvariant::Value;
 
@@ -26,7 +32,21 @@ macro_rules! trivial_error {
     }}
 }
 
-async fn retry<T, E, Fut>(mut count: usize, mut thing: impl FnMut() -> Fut) -> Result<T, E>
+#[allow(unused)]
+async fn retry<T, E, Fut>(count: usize, thing: impl FnMut() -> Fut) -> Result<T, E>
+where
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::error::Error,
+{
+    retry_timeout(Duration::from_millis(500), count, thing).await
+}
+
+#[allow(unused)]
+async fn retry_timeout<T, E, Fut>(
+    timeout: Duration,
+    mut count: usize,
+    mut thing: impl FnMut() -> Fut,
+) -> Result<T, E>
 where
     Fut: std::future::Future<Output = Result<T, E>>,
     E: std::error::Error,
@@ -41,10 +61,62 @@ where
                 if count == 0 {
                     return Err(e);
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(timeout).await;
             }
         }
     }
+}
+
+fn dbus_mac_addr(value: &Value) -> Option<MacAddr> {
+    let Value::Array(ref arr) = value else {
+        return None;
+    };
+    let len = arr.len();
+    if len != 6 && len != 8 {
+        return None;
+    }
+    let mut buff8 = [0u8; 8];
+    for i in 0..len {
+        buff8[i] = arr.get::<u8>(i).ok()??;
+    }
+    Some(if len == 6 {
+        let buff6: [u8; 6] = std::array::from_fn(|i| buff8[i]);
+        MacAddr::from(buff6)
+    } else {
+        MacAddr::from(buff8)
+    })
+}
+
+/// Convert eui48 mac to eui64 per:
+/// https://www.rfc-editor.org/rfc/rfc4291#:~:text=%5BEUI64%5D%20defines%20a%20method%20to%20create%20an%20IEEE%20EUI%2D64%20identifier%20from%20an%0A%20%20%20IEEE%2048%2Dbit%20MAC%20identifier.
+fn to_eui64(mac_addr: &MacAddr) -> [u8; 8] {
+    let a = match mac_addr {
+        MacAddr::V6(a) => a.as_bytes(),
+        MacAddr::V8(a) => return a.clone().into_array(),
+    };
+    [a[0], a[1], a[2], 0xff, 0xfe, a[3], a[4], a[5]]
+}
+
+/// https://www.rfc-editor.org/rfc/rfc4862#section-5.3
+/// https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/framework/src/android/net/MacAddress.java;drc=725fc18d701f2474328b8f21710da13d9bbb7eaf;l=379 for eui48
+fn mac_addr_to_local_link_address(mac_addr: &MacAddr) -> Ipv6Addr {
+    let mut addr = [0u8; 16];
+    let eui64 = to_eui64(mac_addr);
+
+    // fe80 is the local link prefix.
+    addr[0] = 0xfe;
+    addr[1] = 0x80;
+
+    addr[8] = eui64[0] ^ 0x02; // flip the link-local bit
+    addr[9] = eui64[1];
+    addr[10] = eui64[2];
+    addr[11] = eui64[3];
+    addr[12] = eui64[4];
+    addr[13] = eui64[5];
+    addr[14] = eui64[6];
+    addr[15] = eui64[7];
+
+    Ipv6Addr::from(addr)
 }
 
 #[tokio::main]
@@ -175,6 +247,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut peers_changed = p2pdevice.receive_peers_changed().await;
     let mut persistent_groups_changed = p2pdevice.receive_persistent_groups_changed().await;
 
+    // HACK, we should keep track of all peers and so on.
+    let last_peer_addr: RefCell<Option<Ipv6Addr>> = RefCell::new(None);
+
     futures_util::try_join!(
         async {
             while let Some(msg) = wps_failed.next().await {
@@ -203,7 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let peer = wpa_supplicant::peer::PeerProxy::new(&conn, &peer_path).await?;
                     let dev_name = peer.device_name().await?;
                     let dev_addr = peer.device_address().await?;
-                    info!("Peer name: {dev_name:?}, peer addr: {dev_addr:?}");
+                    info!("Peer name: {dev_name:?}, peer dev addr: {dev_addr:?}");
 
                     if !dev_name.starts_with("Rust") {
                         continue;
@@ -265,23 +340,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let iface =
                     wpa_supplicant::interface::InterfaceProxy::new(&conn, interface_path).await?;
                 info!("Successfully created interface proxy");
-                let network_path = retry(3, || iface.current_network()).await?;
-                info!("Current network path is {network_path:?}");
-                let network =
-                    wpa_supplicant::network::NetworkProxy::new(&conn, network_path).await?;
-                let enabled = network.enabled().await?;
-                let props = network.properties().await?;
-                info!("Properties: {props:?}, enabled: {enabled:?}");
-
-                /* Seems this should work but doesn't.
-                let mut network_args = HashMap::new();
-                let network_address = Value::from("192.168.4.1/24");
-                let dhcp_server = Value::from(true);
-                network_args.insert("Address", &network_address);
-                network_args.insert("DHCPServer", &dhcp_server);
-                let network_path = iface.add_network(network_args).await?;
-                debug!("Created network with path {network_path:?}");
-                */
+                let name = iface.ifname().await?;
+                info!("Interface name is {name:?}");
+                let state = iface.state().await?;
+                info!("Interface state is {state:?}");
+                if let Some(local_link) = last_peer_addr.borrow_mut().take() {
+                    let scope_id = unsafe {
+                        libc::if_nametoindex(std::ffi::CString::new(name).unwrap().as_ptr())
+                    };
+                    assert_ne!(scope_id, 0, "Interface should exist");
+                    let socket_addr =
+                        SocketAddrV6::new(local_link, 8080, /* flowinfo = */ 0, scope_id);
+                    info!("Peer sockaddr: {socket_addr:?}");
+                }
             }
             Ok(())
         },
@@ -326,8 +397,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 info!("GO negotiation succeeded: {props:?}");
                 let is_go = props.get("role_go") == Some(&Value::from("GO"));
                 if is_go {
-                    info!("We're the group owner");
+                    info!("We're the group owner!");
                 }
+                let peer_addr = props.get("peer_interface_addr");
+                let Some(interface_addr) = peer_addr.and_then(dbus_mac_addr) else {
+                    error!("Expected a valid mac address, got {peer_addr:?}");
+                    continue;
+                };
+                info!("Peer iface address: {interface_addr:}");
+                let local_link = mac_addr_to_local_link_address(&interface_addr);
+                info!("Peer iface local link address: {local_link:?}");
+
+                // TODO: Turn this into a real address once the interface is up.
+                *last_peer_addr.borrow_mut() = Some(local_link);
             }
             Ok(())
         },
