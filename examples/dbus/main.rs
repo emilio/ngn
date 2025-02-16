@@ -46,7 +46,6 @@ where
     retry_timeout(Duration::from_millis(500), count, thing).await
 }
 
-#[allow(unused)]
 async fn retry_timeout<T, E, Fut>(
     timeout: Duration,
     mut count: usize,
@@ -70,6 +69,17 @@ where
             }
         }
     }
+}
+
+async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
+    info!("We're a client, connecting to {addr:?}");
+    let mut stream = TcpStream::connect(addr).await?;
+    for i in 0..3 {
+        info!("Sending message {i} over the wire!");
+        stream.write_all(b"hi there!").await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    Ok(())
 }
 
 fn to_mac_addr(buff: &[u8]) -> Option<MacAddr> {
@@ -423,13 +433,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         });
                     }
                 } else {
-                    info!("We're a client, creating socket in {local_addr:?}");
-                    let mut stream = TcpStream::connect(go_socket_addr).await?;
-                    for i in 0..3 {
-                        info!("Sending message {i} over the wire!");
-                        stream.write_all(b"hi there!").await?;
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
+                    retry_timeout(Duration::from_secs(2), 5, || say_hi_to(&go_socket_addr)).await?;
                 }
             }
             Ok(())
