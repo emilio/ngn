@@ -170,3 +170,9 @@ Gotchas:
 
  * Nice realization, that all along you can get a link-local address from a MAC address: https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java;l=5894;drc=725fc18d701f2474328b8f21710da13d9bbb7eaf
  * But the above for some reason only gets the right group owner address, not peer address, because the peer asks the group owner for a different address (or something along those lines?).
+
+# Testing via mac80211_hwsim
+
+ * `sudo modprobe mac80211_hwsimr radios=4` gives you something useful
+ * https://lists.infradead.org/pipermail/hostap/2012-January/025290.html seems to work, too.
+ * Unfortunately, that doesn't work for DBUS, because you can't register the same name multiple times... Look into python-dbusmock / a private system bus address?
