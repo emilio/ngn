@@ -17,59 +17,8 @@ use zbus::zvariant::Value;
 
 const PORT: u16 = 9000;
 
-mod wpa_supplicant;
-
-macro_rules! trivial_error {
-    ($($args:tt)*) => {{
-        struct TrivialError;
-        impl std::error::Error for TrivialError {}
-        impl std::fmt::Debug for TrivialError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                std::fmt::Display::fmt(self, f)
-            }
-        }
-        impl std::fmt::Display for TrivialError {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, $($args)*)
-            }
-        }
-        Box::new(TrivialError) as _
-    }}
-}
-
-#[allow(unused)]
-async fn retry<T, E, Fut>(count: usize, thing: impl FnMut() -> Fut) -> Result<T, E>
-where
-    Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::error::Error,
-{
-    retry_timeout(Duration::from_millis(500), count, thing).await
-}
-
-async fn retry_timeout<T, E, Fut>(
-    timeout: Duration,
-    mut count: usize,
-    mut thing: impl FnMut() -> Fut,
-) -> Result<T, E>
-where
-    Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::error::Error,
-{
-    assert!(count > 0);
-    loop {
-        match thing().await {
-            Ok(r) => return Ok(r),
-            Err(e) => {
-                count -= 1;
-                error!("retry: {e}, {count} retries left");
-                if count == 0 {
-                    return Err(e);
-                }
-                tokio::time::sleep(timeout).await;
-            }
-        }
-    }
-}
+use ngn::phy::dbus::{wpa_supplicant, Session};
+use ngn::utils::{trivial_error, retry_timeout};
 
 async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
     info!("We're a client, connecting to {addr:?}");
@@ -156,23 +105,11 @@ fn mac_addr_to_local_link_address(mac_addr: &MacAddr) -> Ipv6Addr {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
 
-    info!("Trying to connect to system bus");
-    let conn = zbus::Connection::system().await?;
-
-    info!("Trying to create wpa_supplicant proxy");
-    let proxy = wpa_supplicant::wpa_supplicant::WpaSupplicantProxy::new(&conn).await?;
-
-    let caps = proxy.capabilities().await?;
-    info!("Scanning for p2p capabilities: {caps:?}");
-
-    if !caps.iter().any(|s| s == "p2p") {
-        return Err(trivial_error!("wpa_supplicant has no p2p support"));
-    }
-
-    // TODO: Maybe remove this once stuff works more reliably.
-    proxy.set_debug_level("debug").await?;
+    let session = Session::new().await?;
+    let conn = session.system_bus();
+    let proxy = session.wpa_s();
 
     let (iface_path, p2pdevice) = match std::env::args().nth(1) {
         Some(iface) => {
