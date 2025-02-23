@@ -210,3 +210,5 @@ Gotchas:
    But that starts getting rather sketchy.
 
    For now, I think I'll just assume we'll use hwaddr allocation.
+   https://github.com/NetworkConfiguration/dhcpcd/issues/473 would allow to
+   make the configuration specific to p2p interfaces at least.
