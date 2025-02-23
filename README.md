@@ -187,9 +187,8 @@ Gotchas:
    rather unfortunate. Looking into it, it seems this is controlled by the
    dhcpcd daemon. In particular, it works if I configure `slaac hwaddr`
    (instead of my distro's default `slaac private`) on `/etc/dhcpcd.conf`.
-   TODO(emilio): Figure out why it works when used across machines, when does
-   dhcpcd decide to use hwaddr even when private is specified? Maybe I should
-   try to detect that somehow?
+   This turns out worked mostly by chance! The desktop I was using as a GO had
+   dhcpd (not dhcpcd) which means it was effectively using `hwaddr`...
 
  * Apparently you can discover addresses via the multicast address ff02::1.
    Maybe we can fallback to that? But we need to check the mac address as well.
