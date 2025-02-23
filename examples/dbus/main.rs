@@ -153,7 +153,10 @@ fn mac_addr_to_local_link_address(mac_addr: &MacAddr) -> Ipv6Addr {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    info!("Trying to connect to system bus");
     let conn = zbus::Connection::system().await?;
+
+    info!("Trying to create wpa_supplicant proxy");
     let proxy = wpa_supplicant::wpa_supplicant::WpaSupplicantProxy::new(&conn).await?;
 
     let caps = proxy.capabilities().await?;
