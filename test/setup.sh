@@ -15,6 +15,7 @@ sudo modprobe mac80211_hwsim radios=3
 TMP_DIR=$(mktemp -d)
 
 # FIXME: Assumes wlan0 is pre-existing. Arguably not amazing but...
+# TODO: Add wlan3 etc once more stuff is working
 IFACES="wlan1 wlan2"
 
 for iface in $IFACES; do

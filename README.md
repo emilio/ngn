@@ -199,4 +199,14 @@ Gotchas:
    supports either the current ipv6 local-link address discovery, or some EAPOL
    key exchange with dhcp... https://developer.android.com/reference/android/net/wifi/p2p/WifiP2pConfig#getGroupClientIpProvisioningMode() / https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java;l=891;drc=e02b0ae8ee5480ee74455785f2118a8c231596b2
 
- * I wonder why would the IPv6 multicast stuff not work?
+ * I wonder why would the IPv6 multicast stuff not work? Answering myself:
+   Doing raw ICMP sockets needs setuid or at least special permissions to
+   create raw sockets, so there goes doing the equivalent of `ping` +
+   `ip -6 neigh`.
+
+   Maybe rtnetlink() allows some user-space query for that?
+   https://man7.org/linux/man-pages/man7/rtnetlink.7.html /
+   https://www.infradead.org/~tgr/libnl/doc/api/group__neightbl.html
+   But that starts getting rather sketchy.
+
+   For now, I think I'll just assume we'll use hwaddr allocation.
