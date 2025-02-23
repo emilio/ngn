@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::{
     self,
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 use zbus::zvariant::Value;
@@ -73,7 +73,12 @@ where
 
 async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
     info!("We're a client, connecting to {addr:?}");
-    let mut stream = TcpStream::connect(addr).await?;
+    let mut stream =
+        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
+            Ok(stream) => stream,
+            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+        };
+
     for i in 0..3 {
         info!("Sending message {i} over the wire!");
         stream.write_all(b"hi there!").await?;
