@@ -174,5 +174,24 @@ Gotchas:
 # Testing via mac80211_hwsim
 
  * `sudo modprobe mac80211_hwsimr radios=4` gives you something useful
- * https://lists.infradead.org/pipermail/hostap/2012-January/025290.html seems to work, too.
- * Unfortunately, that doesn't work for DBUS, because you can't register the same name multiple times... Look into python-dbusmock / a private system bus address?
+
+ * https://lists.infradead.org/pipermail/hostap/2012-January/025290.html seems
+   to work, too.
+
+ * Unfortunately, that doesn't work for DBUS, because you can't register the
+   same name multiple times... Look into python-dbusmock / a private system bus
+   address?
+
+ * That does seems to work! However, for some reason the ip address that gets
+   assigned seems to be based off something else than the mac address, which is
+   rather unfortunate. Looking into it, it seems this is controlled by the
+   dhcpcd daemon. In particular, it works if I configure `slaac hwaddr`
+   (instead of my distro's default `slaac private`) on `/etc/dhcpcd.conf`.
+   TODO(emilio): Figure out why it works when used across machines, when does
+   dhcpcd decide to use hwaddr even when private is specified? Maybe I should
+   try to detect that somehow?
+
+ * Apparently you can discover addresses via the multicast address ff02::1.
+   Maybe we can fallback to that? But we need to check the mac address as well.
+   `ip -6 neigh` does that (after you've pinged the relevant interface-specific
+   address).
