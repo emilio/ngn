@@ -194,3 +194,9 @@ Gotchas:
    Maybe we can fallback to that? But we need to check the mac address as well.
    `ip -6 neigh` does that (after you've pinged the relevant interface-specific
    address).
+
+ * Turns out this is, on its own, a somewhat interesting problem. Android
+   supports either the current ipv6 local-link address discovery, or some EAPOL
+   key exchange with dhcp... https://developer.android.com/reference/android/net/wifi/p2p/WifiP2pConfig#getGroupClientIpProvisioningMode() / https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Wifi/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java;l=891;drc=e02b0ae8ee5480ee74455785f2118a8c231596b2
+
+ * I wonder why would the IPv6 multicast stuff not work?
