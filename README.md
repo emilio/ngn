@@ -212,3 +212,12 @@ Gotchas:
    For now, I think I'll just assume we'll use hwaddr allocation.
    https://github.com/NetworkConfiguration/dhcpcd/issues/473 would allow to
    make the configuration specific to p2p interfaces at least.
+
+# High level goals
+
+ * Get physical layer into a library form, with some automated tests.
+ * Get some basic data structures and replication for high-level logical groups.
+ * Get some identity and authentication going on.
+ * Get some Android back-end prototype code working.
+ * Get some basic android app working, maybe even interacting with Linux.
+ * Nice to have: Better GO IP provisioning, do not rely on hwaddr.
