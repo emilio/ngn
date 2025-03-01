@@ -1,11 +1,20 @@
 MD_TARGETS := $(wildcard *.md)
 TEX_TARGETS := $(wildcard *.tex) $(MD_TARGETS:%.md=build/%.tex) 
 
+.PHONY: build
+build: build/main.pdf
+
+.PHONY: clean
+clean:
+	rm -rf build/
+
+.PHONY: cleanbuild
+cleanbuild: clean build
+
 # We assume all resources are used
 build/main.pdf: $(TEX_TARGETS) build/pandoc-macros.tex $(wildcard res/*)
 	@mkdir -p $(@D)
-	xelatex -shell-escape -output-directory=build main.tex
-	xelatex -shell-escape -output-directory=build main.tex
+	latexmk -pdf -jobname=build/main main
 
 # This is a bit hacky. Pandoc generates latex output but relies on a set of
 # macros to be present on the document via $highlighting-macros$.

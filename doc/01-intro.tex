@@ -1,0 +1,19 @@
+\chapter{Introducción}
+
+La comunicación peer-to-peer (punto a punto, sin necesidad de infraestructura
+centralizada), no son nada nuevo. Las \gls{manet} son comunes en entornos de
+emergencia, tecnología militar, etc \footnote{\url{https://en.wikipedia.org/wiki/Wireless_ad_hoc_network\#Applications}}.
+
+Esta tecnología es accesible a la mayoría de la población, via protocolos como
+Bluetooth que usamos constantemente. Sin embargo este tipo de redes no son
+comunes, a pesar de que las tarjetas de red inalámbrica de teléfonos y
+ordenadores modernos soportan los protocolos necesarios para comunicación
+directa por WiFi.
+
+La principal hipótesis es que esto es porque usar este tipo de tecnologías en
+hardware de consumo es difícil, por la complejidad de estos protocolos, que se
+describirá en las siguientes secciones.
+
+Por ello, se plantea la creación de una librería que abstraiga los detalles de
+más bajo nivel (protocolo utilizado, establecimiento del enlace,
+direccionamiento básico), para hacer más viable su adopción.
