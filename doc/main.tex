@@ -8,7 +8,12 @@
 \usepackage[indent=20pt]{parskip}
 \usepackage{listings}
 \usepackage{glossaries}
+\usepackage[nottoc]{tocbibind} % Show bibliography in toc
 \input{build/pandoc-macros.tex} % For syntax highlighting
+
+% From pandoc:
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 
 \title{
   \textbf{Biblioteca para comunicación directa entre dispositivos basada en tecnologías P2P} \\
@@ -72,5 +77,19 @@
 \tableofcontents
 
 \input{01-intro.tex}
+\input{build/02-objeto.tex}
+\input{build/03-antecedentes.tex}
+\input{build/04-descripcion-actual.tex}
+\input{build/05-normas.tex}
+\input{build/06-requisitos-iniciales.tex}
+\input{build/07-hipotesis.tex}
+\input{build/08-alternativas.tex}
+\input{build/09-solucion.tex}
+\input{build/10-riesgos.tex}
+\input{build/11-organizacion.tex}
+\input{build/12-conclusiones.tex}
+
+\bibliographystyle{plain}
+\bibliography{bibliography}
 
 \end{document}
