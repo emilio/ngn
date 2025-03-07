@@ -5,10 +5,12 @@ edition = "2021"
 description = "P2P"
 
 [dependencies]
+async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 futures-util = "0.3"
 env_logger = "0.11"
+handy = "0.1"
 log = "0.4"
 macaddr = "1"
 libc = "0.2"

@@ -17,8 +17,9 @@ use zbus::zvariant::Value;
 
 const PORT: u16 = 9000;
 
-use ngn::phy::dbus::{wpa_supplicant, Session};
-use ngn::utils::{trivial_error, retry_timeout};
+use ngn::phy::P2PSession;
+use ngn::phy::dbus::{self, wpa_supplicant};
+use ngn::utils::retry_timeout;
 
 async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
     info!("We're a client, connecting to {addr:?}");
@@ -107,76 +108,18 @@ fn mac_addr_to_local_link_address(mac_addr: &MacAddr) -> Ipv6Addr {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
 
-    let session = Session::new().await?;
+    let interface_name = std::env::args().nth(1);
+    let session = dbus::Session::new(dbus::SessionInit {
+        interface_name: interface_name.as_deref(),
+        device_name: "RustTest",
+        go_intent: 14,
+    }).await?;
+
     let conn = session.system_bus();
-    let proxy = session.wpa_s();
+    let p2pdevice = session.p2pdevice();
 
-    let (iface_path, p2pdevice) = match std::env::args().nth(1) {
-        Some(iface) => {
-            info!("Requested explicit interface {iface:?}");
-            let iface_path = match proxy.get_interface(&iface).await {
-                Ok(path) => path,
-                Err(e) => {
-                    info!("Couldn't get interface for {iface}, creating: {e}");
-                    let name = Value::new(iface);
-                    let mut args = HashMap::new();
-                    args.insert("Ifname", &name);
-                    proxy.create_interface(args).await?
-                }
-            };
-
-            info!("Got path {iface_path:?}");
-            let proxy =
-                wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface_path.clone()).await?;
-            (iface_path, proxy)
-        }
-        None => {
-            info!("Looking for interfaces with p2p support");
-
-            let ifaces = proxy.interfaces().await?;
-            info!("Got interfaces: {ifaces:?}");
-
-            let mut result = None;
-            for iface in ifaces {
-                info!("trying {iface}");
-                match wpa_supplicant::p2pdevice::P2PDeviceProxy::new(&conn, iface.clone()).await {
-                    Ok(p) => {
-                        result = Some((iface, p));
-                        break;
-                    }
-                    Err(e) => {
-                        info!("Creating P2P proxy for {iface} failed: {e}");
-                    }
-                }
-            }
-            match result {
-                Some(r) => r,
-                None => {
-                    return Err(trivial_error!(
-                        "Couldn't create P2P proxy for any interface"
-                    ))
-                }
-            }
-        }
-    };
-
-    info!("Using interface {iface_path:?}");
-
-    let cur_config = p2pdevice.p2pdevice_config().await?;
-    info!("Initial device config: {cur_config:?}");
-
-    p2pdevice
-        .set_p2pdevice_config({
-            let mut config = HashMap::new();
-            config.insert("DeviceName", "RustTest".into());
-            config.insert("GOIntent", 14u32.into());
-            config
-        })
-        .await?;
-
-    // Start the find operation.
     info!("Starting find operation");
-    p2pdevice.find(HashMap::default()).await?;
+    session.discover_peers().await?;
 
     let mut find_stopped = p2pdevice.receive_find_stopped().await?;
 

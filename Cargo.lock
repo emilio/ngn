@@ -312,6 +312,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 
 [[package]]
+name = "handy"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58b6dbb5a83491d0670ee48d250c6636b49418f0515798b98378265164a86e08"
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,8 +424,10 @@ dependencies = [
 name = "ngn"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "env_logger",
  "futures-util",
+ "handy",
  "libc",
  "log",
  "macaddr",
