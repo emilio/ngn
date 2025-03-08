@@ -288,10 +288,9 @@ impl super::P2PSession for Session {
             }
         };
         let mut args = HashMap::default();
-        let peer = Value::from(peer_path);
         let method = Value::from("pbc");
-        let go_intent = Value::from(self.go_intent);
-        args.insert("peer", &peer);
+        let go_intent = Value::from(self.go_intent as i32);
+        args.insert("peer", &peer_path);
         args.insert("wps_method", &method);
         args.insert("go_intent", &go_intent);
         match self.p2pdevice.connect(args).await {
