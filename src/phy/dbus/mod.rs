@@ -8,29 +8,28 @@
 mod store;
 pub mod wpa_supplicant;
 
-use super::P2PSessionListener;
-use super::{GroupId, PeerId};
+use super::{GenericResult, GroupId, P2PSessionListener, PeerId};
 
 use crate::utils::{self, trivial_error};
 
 use futures_util::StreamExt;
-use handy::{Handle, HandleMap};
 use log::{error, trace};
 use macaddr::MacAddr;
 use std::{
     collections::HashMap,
     net::{Ipv6Addr, SocketAddrV6},
-    sync::{Arc, RwLock},
+    sync::{Arc, OnceLock, RwLock},
     time::Duration,
 };
 use store::{DbusPath, DbusStore};
+use tokio::task::JoinHandle;
 use tokio::{
     self,
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 use wpa_supplicant::{p2pdevice::P2PDeviceProxy, wpa_supplicant::WpaSupplicantProxy};
-use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
+use zbus::zvariant::{OwnedObjectPath, Value};
 
 #[derive(Debug)]
 struct Peer {
@@ -60,12 +59,22 @@ struct Group {
     iface_name: String,
     /// Scope id of the interface. This can be derived by the name via if_nametoindex.
     scope_id: u32,
-    /// Whether we're the owner of the group.
+    /// Whether we're the group owner.
     is_go: bool,
     /// The current peers we have. Only around if we're a GO
     ///
     /// TODO(emilio): Broadcast these to non-GO members.
     peers: Vec<PeerId>,
+    /// Task handle to our connection loop. Canceled and awaited on drop.
+    group_task: OnceLock<JoinHandle<GenericResult<()>>>,
+}
+
+impl Drop for Group {
+    fn drop(&mut self) {
+        if let Some(task) = self.group_task.take() {
+            task.abort();
+        }
+    }
 }
 
 impl DbusPath for Group {
@@ -87,6 +96,18 @@ pub struct Session {
     peers: RwLock<DbusStore<Peer>>,
     groups: RwLock<DbusStore<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
+    /// Task handle to our run loop. Canceled and awaited on drop.
+    run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        if let Ok(guard) = self.run_loop_task.read() {
+            if let Some(ref t) = *guard {
+                t.abort();
+            }
+        }
+    }
 }
 
 pub struct SessionInit<'a> {
@@ -96,27 +117,6 @@ pub struct SessionInit<'a> {
     pub device_name: &'a str,
     /// Our group owner intent, from 0 to 15.
     pub go_intent: u32,
-}
-
-/// Turns a DBUS array value into a mac address.
-fn dbus_mac_addr(value: &Value) -> Option<MacAddr> {
-    let Value::Array(ref arr) = value else {
-        return None;
-    };
-    let len = arr.len();
-    if len != 6 && len != 8 {
-        return None;
-    }
-    let mut buff8 = [0u8; 8];
-    for i in 0..len {
-        buff8[i] = arr.get::<u8>(i).ok()??;
-    }
-    Some(if len == 6 {
-        let buff6: [u8; 6] = std::array::from_fn(|i| buff8[i]);
-        MacAddr::from(buff6)
-    } else {
-        MacAddr::from(buff8)
-    })
 }
 
 async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
@@ -143,7 +143,7 @@ impl super::P2PSession for Session {
     async fn new(
         init: SessionInit<'_>,
         listener: Arc<dyn P2PSessionListener<Self>>,
-    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+    ) -> GenericResult<Arc<Self>> {
         trace!("Trying to connect to system bus");
         let system_bus = zbus::Connection::system().await?;
 
@@ -239,14 +239,36 @@ impl super::P2PSession for Session {
             peers: Default::default(),
             groups: Default::default(),
             listener,
+            run_loop_task: RwLock::new(None),
         });
 
-        tokio::spawn(Session::run_loop(Arc::clone(&session)));
+        let handle = tokio::spawn(Session::run_loop(Arc::clone(&session)));
+        *session.run_loop_task.write().unwrap() = Some(handle);
 
         Ok(session)
     }
 
-    async fn discover_peers(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn wait(&self) -> GenericResult<()> {
+        trace!("Session::wait");
+        let handle = self.run_loop_task.write().unwrap().take();
+        if let Some(t) = handle {
+            t.await??;
+        }
+        Ok(())
+    }
+
+    async fn stop(&self) -> GenericResult<()> {
+        trace!("Session::stop");
+        // TODO: More graceful termination.
+        self.groups.write().unwrap().clear();
+        self.peers.write().unwrap().clear();
+        if let Some(ref t) = *self.run_loop_task.read().unwrap() {
+            t.abort();
+        }
+        self.wait().await
+    }
+
+    async fn discover_peers(&self) -> GenericResult<()> {
         trace!("Session::discover_peers");
         self.p2pdevice.find(HashMap::default()).await?;
         Ok(())
@@ -256,7 +278,7 @@ impl super::P2PSession for Session {
         Some(self.peers.read().unwrap().get(id.0)?.name.to_owned())
     }
 
-    async fn connect_to_peer(&self, id: PeerId) -> Result<(), Box<dyn std::error::Error>> {
+    async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
         trace!("Session::connect_to_peer({id:?})");
         let peer_path = {
             let guard = self.peers.read().unwrap();
@@ -296,53 +318,145 @@ impl Session {
         &self.p2pdevice
     }
 
-    async fn run_loop(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
+        trace!("Session::group_task({group_id:?})");
+
+        let (is_go, go_iface_addr, scope_id, proxy) =
+            match session.groups.read().unwrap().get(group_id.0) {
+                Some(g) => (g.is_go, g.iface_addr, g.scope_id, g.proxy.clone()),
+                None => {
+                    error!("Didn't find {group_id:?} on group_owner_task start!");
+                    return Err(trivial_error!(
+                        "Didn't find group on group_owner_task start!"
+                    ));
+                }
+            };
+
+        if !is_go {
+            let go_local_link_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
+            let go_socket_addr =
+                SocketAddrV6::new(go_local_link_addr, PORT, /* flowinfo = */ 0, scope_id);
+            utils::retry_timeout(Duration::from_secs(2), 5, || say_hi_to(&go_socket_addr)).await?;
+            return Ok(());
+        }
+
+        trace!("We're GO");
+        let mut peer_joined = proxy.receive_peer_joined().await?;
+        let mut peer_left = proxy.receive_peer_disconnected().await?;
+
+        futures_util::try_join!(
+            async {
+                while let Some(msg) = peer_joined.next().await {
+                    let args = msg.args()?;
+                    let peer = args.peer();
+                    trace!("Peer joined {group_id:?}: {peer:?}");
+                    // TODO: update state, notify listeners, broadcast.
+                }
+                Ok::<_, zbus::Error>(())
+            },
+            async {
+                while let Some(msg) = peer_left.next().await {
+                    let args = msg.args()?;
+                    let peer = args.peer();
+                    trace!("Peer left {group_id:?}: {peer:?}");
+                    // TODO: update state, notify listeners, broadcast.
+                }
+                Ok(())
+            },
+            async {
+                let local_addr = SocketAddrV6::new(
+                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+                    PORT,
+                    /* flowinfo = */ 0,
+                    scope_id,
+                );
+                let listener = TcpListener::bind(local_addr).await?;
+                loop {
+                    // Shamelessly taken from
+                    // https://github.com/tokio-rs/tokio/blob/master/examples/echo.rs
+                    let (mut socket, _address) = listener.accept().await?;
+                    tokio::spawn(async move {
+                        // TODO: Process messages properly rather than echoing.
+                        let mut buf = [0u8; 1024];
+                        loop {
+                            let n = match socket.read(&mut buf).await {
+                                Ok(n) => n,
+                                Err(e) => {
+                                    error!("Failed to read data from socket: {e}");
+                                    break;
+                                }
+                            };
+
+                            if n == 0 {
+                                return;
+                            }
+
+                            trace!(
+                                "Group owner got message from socket: {:?}",
+                                String::from_utf8_lossy(&buf[..n])
+                            );
+                        }
+                    });
+                }
+                #[allow(unreachable_code)]
+                Ok(())
+            }
+        )?;
+        Ok(())
+    }
+
+    async fn run_loop(session: Arc<Self>) -> GenericResult<()> {
         trace!("Session::run_loop");
-        let mut find_stopped = self.p2pdevice.receive_find_stopped().await?;
 
-        let mut device_found = self.p2pdevice.receive_device_found().await?;
+        let mut find_stopped = session.p2pdevice.receive_find_stopped().await?;
 
-        let mut device_lost = self.p2pdevice.receive_device_lost().await?;
+        let mut device_found = session.p2pdevice.receive_device_found().await?;
 
-        let mut invitation_received = self.p2pdevice.receive_invitation_received().await?;
-        let mut invitation_result = self.p2pdevice.receive_invitation_result().await?;
+        let mut device_lost = session.p2pdevice.receive_device_lost().await?;
 
-        let mut wps_failed = self.p2pdevice.receive_wps_failed().await?;
+        let mut invitation_received = session.p2pdevice.receive_invitation_received().await?;
+        let mut invitation_result = session.p2pdevice.receive_invitation_result().await?;
 
-        let mut group_started = self.p2pdevice.receive_group_started().await?;
-        let mut group_finished = self.p2pdevice.receive_group_finished().await?;
-        let mut group_formation_failure = self.p2pdevice.receive_group_formation_failure().await?;
+        let mut wps_failed = session.p2pdevice.receive_wps_failed().await?;
 
-        let mut go_negotiation_request = self.p2pdevice.receive_gonegotiation_request().await?;
-        let mut go_negotiation_success = self.p2pdevice.receive_gonegotiation_success().await?;
-        let mut go_negotiation_failure = self.p2pdevice.receive_gonegotiation_failure().await?;
+        let mut group_started = session.p2pdevice.receive_group_started().await?;
+        let mut group_finished = session.p2pdevice.receive_group_finished().await?;
+        let mut group_formation_failure =
+            session.p2pdevice.receive_group_formation_failure().await?;
 
-        let mut persistent_group_added = self.p2pdevice.receive_persistent_group_added().await?;
+        let mut go_negotiation_request = session.p2pdevice.receive_gonegotiation_request().await?;
+        let mut go_negotiation_success = session.p2pdevice.receive_gonegotiation_success().await?;
+        let mut go_negotiation_failure = session.p2pdevice.receive_gonegotiation_failure().await?;
+
+        let mut persistent_group_added = session.p2pdevice.receive_persistent_group_added().await?;
         let mut persistent_group_removed =
-            self.p2pdevice.receive_persistent_group_removed().await?;
+            session.p2pdevice.receive_persistent_group_removed().await?;
 
-        let mut pd_failure = self.p2pdevice.receive_provision_discovery_failure().await?;
-        let mut pd_req_display_pin = self
+        let mut pd_failure = session
+            .p2pdevice
+            .receive_provision_discovery_failure()
+            .await?;
+        let mut pd_req_display_pin = session
             .p2pdevice
             .receive_provision_discovery_request_display_pin()
             .await?;
-        let mut pd_rsp_display_pin = self
+        let mut pd_rsp_display_pin = session
             .p2pdevice
             .receive_provision_discovery_response_display_pin()
             .await?;
-        let mut pd_req_enter_pin = self
+        let mut pd_req_enter_pin = session
             .p2pdevice
             .receive_provision_discovery_request_enter_pin()
             .await?;
-        let mut pd_rsp_enter_pin = self
+        let mut pd_rsp_enter_pin = session
             .p2pdevice
             .receive_provision_discovery_response_enter_pin()
             .await?;
-        let mut pd_pbc_req = self
+        let mut pd_pbc_req = session
             .p2pdevice
             .receive_provision_discovery_pbcrequest()
             .await?;
-        let mut pd_pbc_rsp = self
+        let mut pd_pbc_rsp = session
             .p2pdevice
             .receive_provision_discovery_pbcresponse()
             .await?;
@@ -350,10 +464,10 @@ impl Session {
         // Properties
         // TODO? This seems silly (as noted in the docs, there can be concurrent groups so watching
         // the group property doesn't make much sense).
-        // let mut group_changed = self.p2pdevice.receive_group_changed().await;
-        let mut peers_changed = self.p2pdevice.receive_peers_changed().await;
+        // let mut group_changed = session.p2pdevice.receive_group_changed().await;
+        let mut peers_changed = session.p2pdevice.receive_peers_changed().await;
         let mut persistent_groups_changed =
-            self.p2pdevice.receive_persistent_groups_changed().await;
+            session.p2pdevice.receive_persistent_groups_changed().await;
 
         futures_util::try_join!(
             async {
@@ -368,7 +482,7 @@ impl Session {
             async {
                 while let Some(_msg) = find_stopped.next().await {
                     trace!("Find stopped");
-                    self.listener.peer_discovery_stopped();
+                    session.listener.peer_discovery_stopped();
                     // TODO: Maybe restart?
                     // p2pdevice.find(HashMap::default()).await?;
                 }
@@ -380,19 +494,20 @@ impl Session {
                     let path = args.path().to_owned();
                     trace!("Found device at {path}");
 
-                    let proxy = wpa_supplicant::peer::PeerProxy::new(&self.system_bus, &path).await?;
+                    let proxy =
+                        wpa_supplicant::peer::PeerProxy::new(&session.system_bus, &path).await?;
                     let name = proxy.device_name().await?;
                     let dev_addr = proxy.device_address().await?;
                     trace!("Peer name: {name:?}, peer dev addr: {dev_addr:?}");
 
-                    let handle = self.peers.write().unwrap().insert(Peer {
+                    let handle = session.peers.write().unwrap().insert(Peer {
                         proxy,
                         path: path.into(),
                         name,
                         groups: Vec::new(),
                     });
 
-                    self.listener.peer_discovered(&self, PeerId(handle));
+                    session.listener.peer_discovered(&session, PeerId(handle));
                 }
                 Ok(())
             },
@@ -403,21 +518,21 @@ impl Session {
                     trace!("Lost device at {peer_path}");
 
                     let (peer_id, groups_disconnected) = {
-                        let mut peers = self.peers.write().unwrap();
+                        let mut peers = session.peers.write().unwrap();
                         let id = match peers.id_by_path(&peer_path) {
                             Some(id) => id,
                             None => {
                                 error!("Got unknown device lost {peer_path}");
                                 continue;
-                            },
+                            }
                         };
 
                         let peer = match peers.get_mut(id) {
                             Some(p) => p,
                             None => {
-                                error!("Got unknown device lost {peer_path}");
+                                error!("Got unknown device lost {peer_path}, {id:?}");
                                 continue;
-                            },
+                            }
                         };
 
                         trace!("Peer lost: {peer:?}");
@@ -427,31 +542,33 @@ impl Session {
                     // Remove the peer for any outstanding groups before notifying the
                     // listener of the peer being lost.
                     if !groups_disconnected.is_empty() {
-                        let mut groups = self.groups.write().unwrap();
+                        let mut groups = session.groups.write().unwrap();
                         for group_id in &groups_disconnected {
                             let group = match groups.get_mut(group_id.0) {
                                 Some(g) => g,
                                 None => {
                                     error!("Tried to disconnect peer {peer_id:?} from {group_id:?}, but didn't find group");
                                     continue;
-                                },
+                                }
                             };
                             // TODO: Use IndexSet or some more clever data structure? Or maybe just
                             // binary search.
-                            let Some(index) = group.peers.iter().position(|id| peer_id == *id) else {
+                            let Some(index) = group.peers.iter().position(|id| peer_id == *id)
+                            else {
                                 error!("Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers");
                                 continue;
                             };
                             group.peers.remove(index);
                         }
-                    };
-
-                    for group_id in &groups_disconnected {
-                        self.listener.peer_left_group(&self, *group_id, peer_id);
+                        for group_id in &groups_disconnected {
+                            session
+                                .listener
+                                .peer_left_group(&session, *group_id, peer_id);
+                        }
                     }
 
-                    self.listener.peer_lost(&self, peer_id);
-                    let removed = self.peers.write().unwrap().remove(peer_id.0);
+                    session.listener.peer_lost(&session, peer_id);
+                    let removed = session.peers.write().unwrap().remove(peer_id.0);
                     debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
                 }
                 Ok(())
@@ -485,9 +602,11 @@ impl Session {
                         }
                     };
                     trace!("Current interface path is {interface_path:?}");
-                    let iface =
-                        wpa_supplicant::interface::InterfaceProxy::new(&self.system_bus, interface_path)
-                            .await?;
+                    let iface = wpa_supplicant::interface::InterfaceProxy::new(
+                        &session.system_bus,
+                        interface_path,
+                    )
+                    .await?;
                     trace!("Successfully created interface proxy");
                     let iface_name = iface.ifname().await?;
                     trace!("Interface name is {iface_name:?}");
@@ -495,7 +614,9 @@ impl Session {
                     trace!("Interface state is {iface_state:?}");
 
                     let scope_id = unsafe {
-                        libc::if_nametoindex(std::ffi::CString::new(iface_name.clone()).unwrap().as_ptr())
+                        libc::if_nametoindex(
+                            std::ffi::CString::new(iface_name.clone()).unwrap().as_ptr(),
+                        )
                     };
                     trace!("Interface scope id is {scope_id:?}");
 
@@ -507,7 +628,11 @@ impl Session {
                         }
                     };
 
-                    let group = wpa_supplicant::group::GroupProxy::new(&self.system_bus, group_path.clone()).await?;
+                    let group = wpa_supplicant::group::GroupProxy::new(
+                        &session.system_bus,
+                        group_path.clone(),
+                    )
+                    .await?;
                     let group_bssid = group.bssid().await?;
                     let Some(go_iface_addr) = utils::to_mac_addr(&group_bssid) else {
                         error!("Expected a valid mac address, got {group_bssid:?}");
@@ -516,19 +641,27 @@ impl Session {
                     trace!("Group BSSID (GO interface address) is {go_iface_addr:?}");
 
                     let is_go = props.get("role") == Some(&Value::from("GO"));
+                    let id = {
+                        let mut groups = session.groups.write().unwrap();
+                        let handle = groups.insert(Group {
+                            proxy: group,
+                            iface,
+                            path: group_path.into(),
+                            iface_addr: go_iface_addr,
+                            iface_name,
+                            scope_id,
+                            is_go,
+                            peers: Vec::new(),
+                            group_task: OnceLock::new(),
+                        });
+                        let id = GroupId(handle);
+                        groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
+                            tokio::spawn(Session::group_task(session.clone(), id))
+                        });
+                        id
+                    };
 
-                    let handle = self.groups.write().unwrap().insert(Group {
-                        proxy: group,
-                        iface,
-                        path: group_path.into(),
-                        iface_addr: go_iface_addr,
-                        iface_name,
-                        scope_id,
-                        is_go,
-                        peers: Vec::new(),
-                    });
-
-                    self.listener.group_joined(&self, GroupId(handle), is_go);
+                    session.listener.joined_group(&session, id, is_go);
                 }
                 Ok(())
             },
@@ -537,6 +670,67 @@ impl Session {
                     let args = msg.args()?;
                     let props = args.properties();
                     trace!("Group finished: {props:?}");
+
+                    let group_path = match props.get("group_object") {
+                        Some(Value::ObjectPath(ref o)) => o.to_owned(),
+                        other => {
+                            error!("Expected a group object path, got {other:?}");
+                            continue;
+                        }
+                    };
+
+                    let (group_id, is_go, peers_lost) = {
+                        let mut groups = session.groups.write().unwrap();
+                        let id = match groups.id_by_path(&group_path) {
+                            Some(id) => id,
+                            None => {
+                                error!("Got unknown group finished {group_path}");
+                                continue;
+                            }
+                        };
+
+                        let group = match groups.get_mut(id) {
+                            Some(p) => p,
+                            None => {
+                                error!("Got unknown group finished {group_path}, {id:?}");
+                                continue;
+                            }
+                        };
+
+                        trace!("Group finished: {group:?}");
+                        (GroupId(id), group.is_go, std::mem::take(&mut group.peers))
+                    };
+
+                    if !peers_lost.is_empty() {
+                        let mut peers = session.peers.write().unwrap();
+                        for peer_id in &peers_lost {
+                            let peer = match peers.get_mut(peer_id.0) {
+                                Some(g) => g,
+                                None => {
+                                    error!("Tried to disconnect peer {peer_id:?} from {group_id:?}, but didn't find group");
+                                    continue;
+                                }
+                            };
+                            // TODO: Use IndexSet or some more clever data structure? Or maybe just
+                            // binary search.
+                            let Some(index) = peer.groups.iter().position(|id| group_id == *id)
+                            else {
+                                error!("Tried to disconnect group {group_id:?} from {peer:?}, but didn't find peer in group peers");
+                                continue;
+                            };
+                            peer.groups.remove(index);
+                        }
+
+                        for peer_id in &peers_lost {
+                            session
+                                .listener
+                                .peer_left_group(&session, group_id, *peer_id);
+                        }
+                    }
+
+                    session.listener.left_group(&session, group_id, is_go);
+                    let removed = session.groups.write().unwrap().remove(group_id.0);
+                    debug_assert!(removed.is_some(), "Found id but couldn't remove group?");
                 }
                 Ok(())
             },
@@ -571,18 +765,6 @@ impl Session {
                     let args = msg.args()?;
                     let props = args.properties();
                     trace!("GO negotiation succeeded: {props:?}");
-                    let is_go = props.get("role_go") == Some(&Value::from("GO"));
-                    if is_go {
-                        trace!("We're the group owner!");
-                    }
-                    let peer_addr = props.get("peer_interface_addr");
-                    let Some(interface_addr) = peer_addr.and_then(dbus_mac_addr) else {
-                        error!("Expected a valid mac address, got {peer_addr:?}");
-                        continue;
-                    };
-                    trace!("Peer iface address: {interface_addr:}");
-                    let local_link = utils::mac_addr_to_local_link_address(&interface_addr);
-                    trace!("Peer iface local link address: {local_link:?}");
                 }
                 Ok(())
             },

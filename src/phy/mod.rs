@@ -2,6 +2,7 @@
 
 pub mod dbus;
 
+use log::trace;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -16,23 +17,49 @@ pub struct PeerId(pub(crate) handy::Handle);
 pub struct GroupId(pub(crate) handy::Handle);
 
 pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
-    fn peer_discovered(&self, _: &S, _: PeerId) {}
-    fn peer_lost(&self, _: &S, _: PeerId) {}
+    fn peer_discovered(&self, sess: &S, peer_id: PeerId) {
+        trace!("Listener::peer_discovered({peer_id:?})");
+        let peer_name = sess.peer_name(peer_id);
+        trace!(" > name: {peer_name:?}");
+    }
+    fn peer_lost(&self, _: &S, peer_id: PeerId) {
+        trace!("Listener::peer_lost({peer_id:?})");
+    }
 
     /// Called when peer discovery stops, either by timeout or explicitly.
     ///
     /// TODO(emilio): What more info can we provide?
-    fn peer_discovery_stopped(&self) {}
+    fn peer_discovery_stopped(&self) {
+        trace!("Listener::peer_discovery_stopped()");
+    }
 
-    fn group_joined(&self, _: &S, _: GroupId, _: bool) {}
-    fn group_left(&self, _: &S, _: GroupId, _: bool) {}
+    fn joined_group(&self, _: &S, group_id: GroupId, is_go: bool) {
+        trace!("Listener::left_group({group_id:?}, is_go={is_go}");
+    }
 
-    fn peer_joined_group(&self, _: &S, _: GroupId, _: PeerId) {}
-    fn peer_left_group(&self, _: &S, _: GroupId, _: PeerId) {}
+    fn left_group(&self, _: &S, group_id: GroupId, is_go: bool) {
+        trace!("Listener::left_group({group_id:?}, is_go={is_go}");
+    }
+
+    fn peer_joined_group(&self, _: &S, group_id: GroupId, peer_id: PeerId) {
+        trace!("Listener::peer_joined_group({group_id:?}, {peer_id:?})");
+    }
+    fn peer_left_group(&self, _: &S, group_id: GroupId, peer_id: PeerId) {
+        trace!("Listener::peer_left_group({group_id:?}, {peer_id:?})");
+    }
 }
 
+/// A listener implementation that logs.
+#[derive(Debug, Default)]
+pub struct LoggerListener;
+impl<S: P2PSession> P2PSessionListener<S> for LoggerListener {
+    // Do nothing, default implementation logs.
+}
+
+pub type GenericResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
 #[async_trait::async_trait]
-pub trait P2PSession: Sized + Debug {
+pub trait P2PSession: Sized + Debug + Send + Sync + 'static {
     /// The backend-specific arguments needed for initialization.
     type InitArgs<'a>: Sized + 'a;
 
@@ -40,7 +67,18 @@ pub trait P2PSession: Sized + Debug {
     async fn new(
         args: Self::InitArgs<'_>,
         listener: Arc<dyn P2PSessionListener<Self>>,
-    ) -> Result<Arc<Self>, Box<dyn std::error::Error>>;
+    ) -> GenericResult<Arc<Self>>;
+
+    /// Stop the session.
+    async fn stop(&self) -> GenericResult<()>;
+
+    /// Wait for the session to exit on its own (potentially never).
+    async fn wait(&self) -> GenericResult<()>;
+
+    fn to_strong(&self) -> Arc<Self> {
+        // SAFETY: Sessions are always arc-allocated, see new().
+        unsafe { Arc::from_raw(self) }
+    }
 
     /// Explicitly start peer discovery.
     ///
@@ -56,11 +94,11 @@ pub trait P2PSession: Sized + Debug {
     /// might not know our protocol or anything).
     ///
     /// TODO(emilio): You might want to configure how persistent this really is etc.
-    async fn discover_peers(&self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn discover_peers(&self) -> GenericResult<()>;
 
     /// Returns a name to a given peer. Guaranteed to exist in between peer_discovered and
     /// peer_lost.
     fn peer_name(&self, id: PeerId) -> Option<String>;
 
-    async fn connect_to_peer(&self, id: PeerId) -> Result<(), Box<dyn std::error::Error>>;
+    async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()>;
 }
