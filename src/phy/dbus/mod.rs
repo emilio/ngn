@@ -349,7 +349,33 @@ impl Session {
                     let args = msg.args()?;
                     let peer = args.peer();
                     trace!("Peer joined {group_id:?}: {peer:?}");
-                    // TODO: update state, notify listeners, broadcast.
+                    let peer_id = {
+                        let mut peers = session.peers.write().unwrap();
+                        let Some(peer_id) = peers.id_by_path(&peer) else {
+                            error!("couldn't find peer {peer:?}");
+                            continue;
+                        };
+                        let peer_id = PeerId(peer_id);
+
+                        let mut groups = session.groups.write().unwrap();
+                        let this_group = groups.get_mut(group_id.0).unwrap();
+                        let this_peer = peers.get_mut(peer_id.0).unwrap();
+                        debug_assert!(
+                            !this_group.peers.contains(&peer_id),
+                            "Peer already associated to group?"
+                        );
+                        debug_assert!(
+                            !this_peer.groups.contains(&group_id),
+                            "Group already associated to peer?"
+                        );
+                        this_peer.groups.push(group_id);
+                        this_group.peers.push(peer_id);
+                        peer_id
+                    };
+                    // TODO: Broadcast to non-GOs?
+                    session
+                        .listener
+                        .peer_joined_group(&session, group_id, peer_id);
                 }
                 Ok::<_, zbus::Error>(())
             },
@@ -358,7 +384,33 @@ impl Session {
                     let args = msg.args()?;
                     let peer = args.peer();
                     trace!("Peer left {group_id:?}: {peer:?}");
-                    // TODO: update state, notify listeners, broadcast.
+                    let peer_id = {
+                        let mut peers = session.peers.write().unwrap();
+                        let Some(peer_id) = peers.id_by_path(&peer) else {
+                            error!("couldn't find peer {peer:?}");
+                            continue;
+                        };
+                        let peer_id = PeerId(peer_id);
+
+                        let mut groups = session.groups.write().unwrap();
+                        let this_group = groups.get_mut(group_id.0).unwrap();
+                        let this_peer = peers.get_mut(peer_id.0).unwrap();
+                        debug_assert!(
+                            this_group.peers.contains(&peer_id),
+                            "Peer not associated to group?"
+                        );
+                        debug_assert!(
+                            this_peer.groups.contains(&group_id),
+                            "Group not associated to peer?"
+                        );
+                        this_peer.groups.retain(|g| *g != group_id);
+                        this_group.peers.retain(|p| *p != peer_id);
+                        peer_id
+                    };
+                    // TODO: Broadcast to non-GOs?
+                    session
+                        .listener
+                        .peer_left_group(&session, group_id, peer_id);
                 }
                 Ok(())
             },
