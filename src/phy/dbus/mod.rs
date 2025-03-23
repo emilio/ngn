@@ -12,7 +12,7 @@ use super::{GenericResult, GroupId, P2PSessionListener, PeerId};
 
 use crate::utils::{self, trivial_error};
 
-use futures_util::StreamExt;
+use futures_lite::StreamExt;
 use log::{error, trace};
 use macaddr::MacAddr;
 use rand::Rng;
@@ -350,7 +350,7 @@ impl Session {
         let mut peer_joined = proxy.receive_peer_joined().await?;
         let mut peer_left = proxy.receive_peer_disconnected().await?;
 
-        futures_util::try_join!(
+        tokio::try_join!(
             async {
                 while let Some(msg) = peer_joined.next().await {
                     let args = msg.args()?;
@@ -526,7 +526,7 @@ impl Session {
         let mut persistent_groups_changed =
             session.p2pdevice.receive_persistent_groups_changed().await;
 
-        futures_util::try_join!(
+        tokio::try_join!(
             async {
                 while let Some(msg) = wps_failed.next().await {
                     trace!("WPS failed");
