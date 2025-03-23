@@ -1,6 +1,7 @@
 //! Main interface for P2P physical groups.
 
 pub mod dbus;
+mod protocol;
 
 use log::trace;
 use std::fmt::Debug;

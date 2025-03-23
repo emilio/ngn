@@ -24,8 +24,7 @@ use std::{
 use store::{DbusPath, DbusStore};
 use tokio::task::JoinHandle;
 use tokio::{
-    self,
-    io::{self, AsyncReadExt, AsyncWriteExt},
+    self, io,
     net::{TcpListener, TcpStream},
 };
 use wpa_supplicant::{p2pdevice::P2PDeviceProxy, wpa_supplicant::WpaSupplicantProxy};
@@ -119,17 +118,17 @@ pub struct SessionInit<'a> {
     pub go_intent: u32,
 }
 
-async fn say_hi_to(addr: &SocketAddrV6) -> std::io::Result<()> {
+async fn say_hi_to(addr: &SocketAddrV6) -> GenericResult<()> {
     trace!("We're a client, connecting to {addr:?}");
     let mut stream =
         match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
             Ok(stream) => stream,
-            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
         };
 
     for i in 0..3 {
         trace!("Sending message {i} over the wire!");
-        stream.write_all(b"hi there!").await?;
+        super::protocol::write_binary_message(&mut stream, b"hi there!").await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     Ok(())
@@ -425,26 +424,25 @@ impl Session {
                 loop {
                     // Shamelessly taken from
                     // https://github.com/tokio-rs/tokio/blob/master/examples/echo.rs
-                    let (mut socket, _address) = listener.accept().await?;
+                    // TODO: Use a buffered reader
+                    // TODO: Store the socket around for bi-lateral communication.
+                    let (mut socket, address) = listener.accept().await?;
                     tokio::spawn(async move {
-                        // TODO: Process messages properly rather than echoing.
-                        let mut buf = [0u8; 1024];
+                        trace!("Incoming connection from {address:?}");
                         loop {
-                            let n = match socket.read(&mut buf).await {
-                                Ok(n) => n,
+                            let buf = match super::protocol::read_binary_message(&mut socket).await
+                            {
+                                Ok(buf) => buf,
                                 Err(e) => {
-                                    error!("Failed to read data from socket: {e}");
-                                    break;
+                                    error!(
+                                        "Unexpected error reading message from {address:?}: {e:?}"
+                                    );
+                                    return;
                                 }
                             };
-
-                            if n == 0 {
-                                return;
-                            }
-
                             trace!(
                                 "Group owner got message from socket: {:?}",
-                                String::from_utf8_lossy(&buf[..n])
+                                String::from_utf8_lossy(&buf)
                             );
                         }
                     });
