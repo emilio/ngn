@@ -35,7 +35,7 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     }
 
     fn joined_group(&self, _: &S, group_id: GroupId, is_go: bool) {
-        trace!("Listener::left_group({group_id:?}, is_go={is_go}");
+        trace!("Listener::joined_group({group_id:?}, is_go={is_go}");
     }
 
     fn left_group(&self, _: &S, group_id: GroupId, is_go: bool) {
