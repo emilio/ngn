@@ -15,6 +15,7 @@ use crate::utils::{self, trivial_error};
 use futures_util::StreamExt;
 use log::{error, trace};
 use macaddr::MacAddr;
+use rand::Rng;
 use std::{
     collections::HashMap,
     net::{Ipv6Addr, SocketAddrV6},
@@ -127,8 +128,15 @@ async fn say_hi_to(addr: &SocketAddrV6) -> GenericResult<()> {
         };
 
     for i in 0..3 {
-        trace!("Sending message {i} over the wire!");
-        super::protocol::write_binary_message(&mut stream, b"hi there!").await?;
+        let msg = {
+            let mut rng = rand::rng();
+            let random_chars = rng.random_range(0usize..=(1024 * 10));
+            let mut msg = format!("Hi there, this is message {i} with {random_chars} random chars: ");
+            msg.extend(rng.sample_iter(rand::distr::Alphanumeric).take(random_chars).map(|b| b as char));
+            msg
+        };
+        trace!("Sending message {i} over the wire: {msg}");
+        super::protocol::write_binary_message(&mut stream, msg.as_bytes()).await?;
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     Ok(())
