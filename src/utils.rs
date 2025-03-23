@@ -33,7 +33,7 @@ pub async fn retry_timeout<T, E, Fut>(
 ) -> Result<T, E>
 where
     Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::error::Error,
+    E: std::fmt::Display,
 {
     assert!(count > 0);
     loop {
@@ -54,7 +54,7 @@ where
 pub async fn retry<T, E, Fut>(count: usize, thing: impl FnMut() -> Fut) -> Result<T, E>
 where
     Fut: std::future::Future<Output = Result<T, E>>,
-    E: std::error::Error,
+    E: std::fmt::Display,
 {
     retry_timeout(Duration::from_millis(500), count, thing).await
 }
