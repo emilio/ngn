@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use handy::{Handle, HandleMap};
+use std::collections::HashMap;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath};
 
 /// A trait for an object associated to a DBUS path.

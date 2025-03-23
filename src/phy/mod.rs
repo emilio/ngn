@@ -22,6 +22,7 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
         let peer_name = sess.peer_name(peer_id);
         trace!(" > name: {peer_name:?}");
     }
+
     fn peer_lost(&self, _: &S, peer_id: PeerId) {
         trace!("Listener::peer_lost({peer_id:?})");
     }
@@ -44,6 +45,7 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     fn peer_joined_group(&self, _: &S, group_id: GroupId, peer_id: PeerId) {
         trace!("Listener::peer_joined_group({group_id:?}, {peer_id:?})");
     }
+
     fn peer_left_group(&self, _: &S, group_id: GroupId, peer_id: PeerId) {
         trace!("Listener::peer_left_group({group_id:?}, {peer_id:?})");
     }

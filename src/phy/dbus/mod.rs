@@ -640,25 +640,26 @@ impl Session {
                     trace!("Group BSSID (GO interface address) is {go_iface_addr:?}");
 
                     let is_go = props.get("role") == Some(&Value::from("GO"));
-                    let id = {
-                        let mut groups = session.groups.write().unwrap();
-                        let handle = groups.insert(Group {
-                            proxy: group,
-                            iface,
-                            path: group_path.into(),
-                            iface_addr: go_iface_addr,
-                            iface_name,
-                            scope_id,
-                            is_go,
-                            peers: Vec::new(),
-                            group_task: OnceLock::new(),
-                        });
-                        let id = GroupId(handle);
-                        groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
-                            tokio::spawn(Session::group_task(session.clone(), id))
-                        });
-                        id
-                    };
+                    let id =
+                        {
+                            let mut groups = session.groups.write().unwrap();
+                            let handle = groups.insert(Group {
+                                proxy: group,
+                                iface,
+                                path: group_path.into(),
+                                iface_addr: go_iface_addr,
+                                iface_name,
+                                scope_id,
+                                is_go,
+                                peers: Vec::new(),
+                                group_task: OnceLock::new(),
+                            });
+                            let id = GroupId(handle);
+                            groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
+                                tokio::spawn(Session::group_task(session.clone(), id))
+                            });
+                            id
+                        };
 
                     session.listener.joined_group(&session, id, is_go);
                 }
