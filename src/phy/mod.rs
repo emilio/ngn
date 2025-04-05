@@ -50,6 +50,10 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     fn peer_left_group(&self, _: &S, group_id: GroupId, peer_id: PeerId) {
         trace!("Listener::peer_left_group({group_id:?}, {peer_id:?})");
     }
+
+    fn peer_messaged(&self, _: &S, peer_id: PeerId, group_id: GroupId, message: &[u8]) {
+        trace!("Listener::peer_messaged({peer_id:?}, {group_id:?}, {message:?})");
+    }
 }
 
 /// A listener implementation that logs.
@@ -104,4 +108,7 @@ pub trait P2PSession: Sized + Debug + Send + Sync + 'static {
     fn peer_name(&self, id: PeerId) -> Option<String>;
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()>;
+
+    /// Try to send a message to a given peer.
+    async fn message_peer(&self, id: PeerId, message: &[u8]) -> GenericResult<()>;
 }

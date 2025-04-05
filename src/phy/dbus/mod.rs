@@ -15,14 +15,13 @@ use crate::utils::{self, trivial_error};
 use futures_lite::StreamExt;
 use log::{error, trace};
 use macaddr::MacAddr;
-use rand::Rng;
+use parking_lot::RwLock;
 use std::{
     collections::HashMap,
-    net::{Ipv6Addr, SocketAddrV6},
+    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use parking_lot::RwLock;
 use store::{DbusPath, DbusStore};
 use tokio::task::JoinHandle;
 use tokio::{
@@ -37,6 +36,7 @@ struct Peer {
     proxy: wpa_supplicant::peer::PeerProxy<'static>,
     path: OwnedObjectPath,
     name: String,
+    link_addr: Ipv6Addr,
     groups: Vec<GroupId>,
 }
 
@@ -118,26 +118,13 @@ pub struct SessionInit<'a> {
     pub go_intent: u32,
 }
 
-async fn say_hi_to(addr: &SocketAddrV6) -> GenericResult<()> {
-    trace!("We're a client, connecting to {addr:?}");
+async fn send_message_to(addr: &SocketAddrV6, message: &[u8]) -> GenericResult<()> {
     let mut stream =
         match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
             Ok(stream) => stream,
             Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
         };
-
-    for i in 0..3 {
-        let msg = {
-            let mut rng = rand::rng();
-            let random_chars = rng.random_range(0usize..=(1024 * 10));
-            let mut msg = format!("Hi there, this is message {i} with {random_chars} random chars: ");
-            msg.extend(rng.sample_iter(rand::distr::Alphanumeric).take(random_chars).map(|b| b as char));
-            msg
-        };
-        trace!("Sending message {i} over the wire: {msg}");
-        super::protocol::write_binary_message(&mut stream, msg.as_bytes()).await?;
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
+    super::protocol::write_binary_message(&mut stream, message).await?;
     Ok(())
 }
 
@@ -308,6 +295,29 @@ impl super::P2PSession for Session {
         }
         Ok(())
     }
+
+    async fn message_peer(&self, id: PeerId, message: &[u8]) -> GenericResult<()> {
+        let (peer_link_addr, scope_id) = {
+            let peers = self.peers.read();
+            let groups = self.groups.read();
+            let Some(peer) = peers.get(id.0) else {
+                return Err(trivial_error!("Peer was lost (stale handle?)"));
+            };
+            // Choose one arbitrary group to connect to it.
+            let Some(group_id) = peer.groups.first() else {
+                // TODO: Maybe we want to call connect_to_peer automatically?
+                return Err(trivial_error!("Peer is not connected to any group"));
+            };
+            let Some(group) = groups.get(group_id.0) else {
+                // TODO: Maybe we want to call connect_to_peer automatically?
+                return Err(trivial_error!("Group not found"));
+            };
+            (peer.link_addr.clone(), group.scope_id)
+        };
+        let socket_addr = SocketAddrV6::new(peer_link_addr, PORT, /* flowinfo = */ 0, scope_id);
+        utils::retry_timeout(Duration::from_secs(2), 5, || send_message_to(&socket_addr, message)).await?;
+        Ok(())
+    }
 }
 
 impl Session {
@@ -323,26 +333,97 @@ impl Session {
         &self.p2pdevice
     }
 
-    async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
-        trace!("Session::group_task({group_id:?})");
+    async fn listen_to_group_messages(
+        session: Arc<Self>,
+        group_id: GroupId,
+        scope_id: u32,
+    ) -> GenericResult<()> {
+        let local_addr = SocketAddrV6::new(
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+            PORT,
+            /* flowinfo = */ 0,
+            scope_id,
+        );
+        let listener = TcpListener::bind(local_addr).await?;
+        loop {
+            // TODO: Use a buffered reader.
+            // TODO: Keep a single stream around for faster bi-lateral communication maybe?
+            let (mut stream, address) = listener.accept().await?;
+            let address = match address {
+                SocketAddr::V4(ref addr) => {
+                    error!("Unexpected message from ipv4 address {addr:?}");
+                    continue;
+                }
+                SocketAddr::V6(addr) => addr,
+            };
 
-        let (is_go, go_iface_addr, scope_id, proxy) =
-            match session.groups.read().get(group_id.0) {
-                Some(g) => (g.is_go, g.iface_addr, g.scope_id, g.proxy.clone()),
-                None => {
-                    error!("Didn't find {group_id:?} on group_owner_task start!");
-                    return Err(trivial_error!(
-                        "Didn't find group on group_owner_task start!"
-                    ));
+            // TODO: This lookup could be faster, really.
+            let peer_id = {
+                let groups = session.groups.read();
+                let Some(group) = groups.get(group_id.0) else {
+                    error!("Group {group_id:?} lost?");
+                    return Ok(());
+                };
+                let peers = session.peers.read();
+                let mut found_id = None;
+                for peer_id in &group.peers {
+                    let Some(peer) = peers.get(peer_id.0) else {
+                        error!("Peer {peer_id:?} lost?");
+                        continue;
+                    };
+                    if peer.link_addr == *address.ip() {
+                        found_id = Some(*peer_id);
+                        break;
+                    }
+                }
+                match found_id {
+                    Some(id) => id,
+                    None => {
+                        error!("Message couldn't be mapped to a known peer in the group!");
+                        continue;
+                    }
                 }
             };
 
+            let session = Arc::clone(&session);
+            tokio::spawn(async move {
+                trace!("Incoming connection from {address:?}");
+                loop {
+                    let buf = match super::protocol::read_binary_message(&mut stream).await {
+                        Ok(buf) => buf,
+                        Err(e) => {
+                            // XXX EOF isn't really unexpected.
+                            error!("Unexpected error reading message from {address:?}: {e:?}");
+                            return;
+                        }
+                    };
+                    trace!(
+                        "Got message from socket: {:?}",
+                        String::from_utf8_lossy(&buf)
+                    );
+                    session
+                        .listener
+                        .peer_messaged(&session, peer_id, group_id, &buf);
+                }
+            });
+        }
+        #[allow(unreachable_code)]
+        Ok(())
+    }
+
+    async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
+        trace!("Session::group_task({group_id:?})");
+
+        let (is_go, scope_id, proxy) = match session.groups.read().get(group_id.0) {
+            Some(g) => (g.is_go, g.scope_id, g.proxy.clone()),
+            None => {
+                error!("Didn't find {group_id:?} on group_task start!");
+                return Err(trivial_error!("Didn't find group on group_task start!"));
+            }
+        };
+
         if !is_go {
-            let go_local_link_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
-            let go_socket_addr =
-                SocketAddrV6::new(go_local_link_addr, PORT, /* flowinfo = */ 0, scope_id);
-            utils::retry_timeout(Duration::from_secs(2), 5, || say_hi_to(&go_socket_addr)).await?;
-            return Ok(());
+            return Self::listen_to_group_messages(session, group_id, scope_id).await;
         }
 
         trace!("We're GO");
@@ -383,7 +464,7 @@ impl Session {
                         .listener
                         .peer_joined_group(&session, group_id, peer_id);
                 }
-                Ok::<_, zbus::Error>(())
+                Ok(())
             },
             async {
                 while let Some(msg) = peer_left.next().await {
@@ -420,43 +501,7 @@ impl Session {
                 }
                 Ok(())
             },
-            async {
-                let local_addr = SocketAddrV6::new(
-                    Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-                    PORT,
-                    /* flowinfo = */ 0,
-                    scope_id,
-                );
-                let listener = TcpListener::bind(local_addr).await?;
-                loop {
-                    // Shamelessly taken from
-                    // https://github.com/tokio-rs/tokio/blob/master/examples/echo.rs
-                    // TODO: Use a buffered reader
-                    // TODO: Store the socket around for bi-lateral communication.
-                    let (mut socket, address) = listener.accept().await?;
-                    tokio::spawn(async move {
-                        trace!("Incoming connection from {address:?}");
-                        loop {
-                            let buf = match super::protocol::read_binary_message(&mut socket).await
-                            {
-                                Ok(buf) => buf,
-                                Err(e) => {
-                                    error!(
-                                        "Unexpected error reading message from {address:?}: {e:?}"
-                                    );
-                                    return;
-                                }
-                            };
-                            trace!(
-                                "Group owner got message from socket: {:?}",
-                                String::from_utf8_lossy(&buf)
-                            );
-                        }
-                    });
-                }
-                #[allow(unreachable_code)]
-                Ok(())
-            }
+            Self::listen_to_group_messages(Arc::clone(&session), group_id, scope_id),
         )?;
         Ok(())
     }
@@ -556,10 +601,17 @@ impl Session {
                     let dev_addr = proxy.device_address().await?;
                     trace!("Peer name: {name:?}, peer dev addr: {dev_addr:?}");
 
+                    let Some(dev_addr) = utils::to_mac_addr(&dev_addr) else {
+                        error!("Expected a valid mac address for peer {name}");
+                        continue;
+                    };
+
                     let handle = session.peers.write().insert(Peer {
                         proxy,
                         path: path.into(),
                         name,
+                        // XXX this is not the right address, we need the interface address...
+                        link_addr: utils::mac_addr_to_local_link_address(&dev_addr),
                         groups: Vec::new(),
                     });
 
