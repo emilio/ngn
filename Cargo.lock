@@ -450,6 +450,7 @@ dependencies = [
  "libc",
  "log",
  "macaddr",
+ "parking_lot",
  "rand",
  "tokio",
  "zbus",

@@ -19,9 +19,10 @@ use rand::Rng;
 use std::{
     collections::HashMap,
     net::{Ipv6Addr, SocketAddrV6},
-    sync::{Arc, OnceLock, RwLock},
+    sync::{Arc, OnceLock},
     time::Duration,
 };
+use parking_lot::RwLock;
 use store::{DbusPath, DbusStore};
 use tokio::task::JoinHandle;
 use tokio::{
@@ -83,7 +84,7 @@ impl DbusPath for Group {
     }
 }
 
-// TODO: Do not hardcode.
+// TODO: Do not hardcode, perhaps?
 const PORT: u16 = 9000;
 
 /// Global state for a P2P session.
@@ -102,10 +103,8 @@ pub struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if let Ok(guard) = self.run_loop_task.read() {
-            if let Some(ref t) = *guard {
-                t.abort();
-            }
+        if let Some(ref t) = *self.run_loop_task.read() {
+            t.abort();
         }
     }
 }
@@ -250,14 +249,14 @@ impl super::P2PSession for Session {
         });
 
         let handle = tokio::spawn(Session::run_loop(Arc::clone(&session)));
-        *session.run_loop_task.write().unwrap() = Some(handle);
+        *session.run_loop_task.write() = Some(handle);
 
         Ok(session)
     }
 
     async fn wait(&self) -> GenericResult<()> {
         trace!("Session::wait");
-        let handle = self.run_loop_task.write().unwrap().take();
+        let handle = self.run_loop_task.write().take();
         if let Some(t) = handle {
             t.await??;
         }
@@ -267,9 +266,9 @@ impl super::P2PSession for Session {
     async fn stop(&self) -> GenericResult<()> {
         trace!("Session::stop");
         // TODO: More graceful termination.
-        self.groups.write().unwrap().clear();
-        self.peers.write().unwrap().clear();
-        if let Some(ref t) = *self.run_loop_task.read().unwrap() {
+        self.groups.write().clear();
+        self.peers.write().clear();
+        if let Some(ref t) = *self.run_loop_task.read() {
             t.abort();
         }
         self.wait().await
@@ -282,13 +281,13 @@ impl super::P2PSession for Session {
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().unwrap().get(id.0)?.name.to_owned())
+        Some(self.peers.read().get(id.0)?.name.to_owned())
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
         trace!("Session::connect_to_peer({id:?})");
         let peer_path = {
-            let guard = self.peers.read().unwrap();
+            let guard = self.peers.read();
             match guard.get(id.0) {
                 Some(p) => Value::from(p.path.to_owned()),
                 None => return Err(trivial_error!("Can't locate peer")),
@@ -328,7 +327,7 @@ impl Session {
         trace!("Session::group_task({group_id:?})");
 
         let (is_go, go_iface_addr, scope_id, proxy) =
-            match session.groups.read().unwrap().get(group_id.0) {
+            match session.groups.read().get(group_id.0) {
                 Some(g) => (g.is_go, g.iface_addr, g.scope_id, g.proxy.clone()),
                 None => {
                     error!("Didn't find {group_id:?} on group_owner_task start!");
@@ -357,14 +356,14 @@ impl Session {
                     let peer = args.peer();
                     trace!("Peer joined {group_id:?}: {peer:?}");
                     let peer_id = {
-                        let mut peers = session.peers.write().unwrap();
+                        let mut peers = session.peers.write();
                         let Some(peer_id) = peers.id_by_path(&peer) else {
                             error!("couldn't find peer {peer:?}");
                             continue;
                         };
                         let peer_id = PeerId(peer_id);
 
-                        let mut groups = session.groups.write().unwrap();
+                        let mut groups = session.groups.write();
                         let this_group = groups.get_mut(group_id.0).unwrap();
                         let this_peer = peers.get_mut(peer_id.0).unwrap();
                         debug_assert!(
@@ -392,14 +391,14 @@ impl Session {
                     let peer = args.peer();
                     trace!("Peer left {group_id:?}: {peer:?}");
                     let peer_id = {
-                        let mut peers = session.peers.write().unwrap();
+                        let mut peers = session.peers.write();
                         let Some(peer_id) = peers.id_by_path(&peer) else {
                             error!("couldn't find peer {peer:?}");
                             continue;
                         };
                         let peer_id = PeerId(peer_id);
 
-                        let mut groups = session.groups.write().unwrap();
+                        let mut groups = session.groups.write();
                         let this_group = groups.get_mut(group_id.0).unwrap();
                         let this_peer = peers.get_mut(peer_id.0).unwrap();
                         debug_assert!(
@@ -557,7 +556,7 @@ impl Session {
                     let dev_addr = proxy.device_address().await?;
                     trace!("Peer name: {name:?}, peer dev addr: {dev_addr:?}");
 
-                    let handle = session.peers.write().unwrap().insert(Peer {
+                    let handle = session.peers.write().insert(Peer {
                         proxy,
                         path: path.into(),
                         name,
@@ -575,7 +574,7 @@ impl Session {
                     trace!("Lost device at {peer_path}");
 
                     let (peer_id, groups_disconnected) = {
-                        let mut peers = session.peers.write().unwrap();
+                        let mut peers = session.peers.write();
                         let id = match peers.id_by_path(&peer_path) {
                             Some(id) => id,
                             None => {
@@ -599,7 +598,7 @@ impl Session {
                     // Remove the peer for any outstanding groups before notifying the
                     // listener of the peer being lost.
                     if !groups_disconnected.is_empty() {
-                        let mut groups = session.groups.write().unwrap();
+                        let mut groups = session.groups.write();
                         for group_id in &groups_disconnected {
                             let group = match groups.get_mut(group_id.0) {
                                 Some(g) => g,
@@ -625,7 +624,7 @@ impl Session {
                     }
 
                     session.listener.peer_lost(&session, peer_id);
-                    let removed = session.peers.write().unwrap().remove(peer_id.0);
+                    let removed = session.peers.write().remove(peer_id.0);
                     debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
                 }
                 Ok(())
@@ -700,7 +699,7 @@ impl Session {
                     let is_go = props.get("role") == Some(&Value::from("GO"));
                     let id =
                         {
-                            let mut groups = session.groups.write().unwrap();
+                            let mut groups = session.groups.write();
                             let handle = groups.insert(Group {
                                 proxy: group,
                                 iface,
@@ -738,7 +737,7 @@ impl Session {
                     };
 
                     let (group_id, is_go, peers_lost) = {
-                        let mut groups = session.groups.write().unwrap();
+                        let mut groups = session.groups.write();
                         let id = match groups.id_by_path(&group_path) {
                             Some(id) => id,
                             None => {
@@ -760,7 +759,7 @@ impl Session {
                     };
 
                     if !peers_lost.is_empty() {
-                        let mut peers = session.peers.write().unwrap();
+                        let mut peers = session.peers.write();
                         for peer_id in &peers_lost {
                             let peer = match peers.get_mut(peer_id.0) {
                                 Some(g) => g,
@@ -787,7 +786,7 @@ impl Session {
                     }
 
                     session.listener.left_group(&session, group_id, is_go);
-                    let removed = session.groups.write().unwrap().remove(group_id.0);
+                    let removed = session.groups.write().remove(group_id.0);
                     debug_assert!(removed.is_some(), "Found id but couldn't remove group?");
                 }
                 Ok(())
