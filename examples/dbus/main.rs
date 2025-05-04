@@ -50,8 +50,7 @@ impl<S: P2PSession> P2PSessionListener<S> for Listener {
     }
 }
 
-#[tokio::main]
-async fn main() -> ngn::phy::GenericResult<()> {
+async fn run() -> ngn::phy::GenericResult<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
 
     let interface_name = std::env::args().nth(1);
@@ -71,4 +70,16 @@ async fn main() -> ngn::phy::GenericResult<()> {
     session.wait().await?;
 
     Ok(())
+}
+
+fn main() -> ngn::phy::GenericResult<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        // 10 MiB should be plenty even for debug builds.
+        .thread_stack_size(10 * 1024 * 1024)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            run().await
+        })
 }
