@@ -84,7 +84,10 @@ pub trait P2PSession: Sized + Debug + Send + Sync + 'static {
 
     fn to_strong(&self) -> Arc<Self> {
         // SAFETY: Sessions are always arc-allocated, see new().
-        unsafe { Arc::from_raw(self) }
+        unsafe {
+            Arc::increment_strong_count(self);
+            Arc::from_raw(self)
+        }
     }
 
     /// Explicitly start peer discovery.
