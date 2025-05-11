@@ -301,7 +301,9 @@ P2PDevice::device_address()"
         let mut args = HashMap::default();
         let method = Value::from(WPS_METHOD);
         let go_intent = Value::from(self.go_intent as i32);
+        let auto_join = Value::from(true);
         args.insert("peer", &peer_path);
+        args.insert("auto_join", &auto_join);
         args.insert("wps_method", &method);
         args.insert("go_intent", &go_intent);
         match self.p2pdevice.connect(args).await {
@@ -934,10 +936,12 @@ impl Session {
                     let peer = Value::from(peer_path);
                     let method = Value::from(WPS_METHOD);
                     let go_intent = Value::from(session.go_intent as i32);
+                    let auto_join = Value::from(true);
                     tokio::spawn(async move {
                         let mut connect_args = HashMap::new();
                         connect_args.insert("peer", &peer);
                         connect_args.insert("wps_method", &method);
+                        connect_args.insert("auto_join", &auto_join);
                         connect_args.insert("go_intent", &go_intent);
                         session.p2pdevice.connect(connect_args).await
                     });

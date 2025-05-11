@@ -217,6 +217,9 @@ Gotchas:
    exposed on Android, too, so fix outgoing:
    https://lists.infradead.org/pipermail/hostap/2025-May/043428.html
 
+ * Expose auto-join behavior via DBUS:
+   https://lists.infradead.org/pipermail/hostap/2025-May/043429.html
+
 # High level goals
 
  * Get physical layer into a library form, with some automated tests.
