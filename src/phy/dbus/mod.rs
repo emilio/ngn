@@ -31,19 +31,29 @@ use tokio::{
 use wpa_supplicant::{p2pdevice::P2PDeviceProxy, wpa_supplicant::WpaSupplicantProxy};
 use zbus::zvariant::{OwnedObjectPath, Value};
 
+const WPS_METHOD: &'static str = "pbc";
+
 #[derive(Debug)]
 struct Peer {
     proxy: wpa_supplicant::peer::PeerProxy<'static>,
     path: OwnedObjectPath,
     name: String,
-    link_addr: Ipv6Addr,
     groups: Vec<GroupId>,
+    /// Device address of the device. Note this is _not_ usable to get a link-local address.
+    dev_addr: MacAddr,
 }
 
 impl DbusPath for Peer {
     fn path(&self) -> &OwnedObjectPath {
         &self.path
     }
+}
+
+/// Per group association for a given peer.
+#[derive(Debug, Default)]
+struct PeerGroupInfo {
+    /// The link-local address of this peer, if known.
+    link_local_address: Option<Ipv6Addr>,
 }
 
 #[derive(Debug)]
@@ -64,8 +74,8 @@ struct Group {
     is_go: bool,
     /// The current peers we have. Only around if we're a GO
     ///
-    /// TODO(emilio): Broadcast these to non-GO members.
-    peers: Vec<PeerId>,
+    /// TODO(emilio): Broadcast these to non-GO members?
+    peers: HashMap<PeerId, PeerGroupInfo>,
     /// Task handle to our connection loop. Canceled and awaited on drop.
     group_task: OnceLock<JoinHandle<GenericResult<()>>>,
 }
@@ -85,7 +95,8 @@ impl DbusPath for Group {
 }
 
 // TODO: Do not hardcode, perhaps?
-const PORT: u16 = 9000;
+const P2P_PORT: u16 = 9000;
+const CONTROL_PORT: u16 = 9001;
 
 /// Global state for a P2P session.
 #[derive(Debug)]
@@ -276,7 +287,7 @@ impl super::P2PSession for Session {
             }
         };
         let mut args = HashMap::default();
-        let method = Value::from("pbc");
+        let method = Value::from(WPS_METHOD);
         let go_intent = Value::from(self.go_intent as i32);
         args.insert("peer", &peer_path);
         args.insert("wps_method", &method);
@@ -307,11 +318,23 @@ impl super::P2PSession for Session {
                 // TODO: Maybe we want to call connect_to_peer automatically?
                 return Err(trivial_error!("Group not found"));
             };
-            (peer.link_addr.clone(), group.scope_id)
+            let Some(address) = group
+                .peers
+                .get(&id)
+                .and_then(|info| info.link_local_address.clone())
+            else {
+                return Err(trivial_error!(
+                    "Peer doesn't have a link local address (yet?)"
+                ));
+            };
+            (address, group.scope_id)
         };
-        let socket_addr = SocketAddrV6::new(peer_link_addr, PORT, /* flowinfo = */ 0, scope_id);
-        utils::retry_timeout(Duration::from_secs(2), 5, || send_message_to(&socket_addr, message)).await?;
-        Ok(())
+        let socket_addr =
+            SocketAddrV6::new(peer_link_addr, P2P_PORT, /* flowinfo = */ 0, scope_id);
+        utils::retry_timeout(Duration::from_secs(2), 5, || {
+            send_message_to(&socket_addr, message)
+        })
+        .await
     }
 }
 
@@ -328,14 +351,41 @@ impl Session {
         &self.p2pdevice
     }
 
-    async fn listen_to_group_messages(
+    fn peer_id_from_address(&self, group_id: GroupId, address: &SocketAddr) -> Option<PeerId> {
+        let address = match address {
+            SocketAddr::V4(ref addr) => {
+                error!("Unexpected message from ipv4 address {addr:?}");
+                return None;
+            }
+            SocketAddr::V6(addr) => addr,
+        };
+
+        // TODO: This lookup could be faster, really.
+        let groups = self.groups.read();
+        let Some(group) = groups.get(group_id.0) else {
+            error!("Group {group_id:?} lost?");
+            return None;
+        };
+        for (peer_id, info) in &group.peers {
+            if info
+                .link_local_address
+                .is_some_and(|addr| addr == *address.ip())
+            {
+                return Some(*peer_id);
+            }
+        }
+        error!("Address {address:?} couldn't be mapped to a known peer in the group!");
+        return None;
+    }
+
+    async fn establish_control_channel(
         session: Arc<Self>,
         group_id: GroupId,
         scope_id: u32,
     ) -> GenericResult<()> {
         let local_addr = SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-            PORT,
+            P2P_PORT,
             /* flowinfo = */ 0,
             scope_id,
         );
@@ -344,42 +394,54 @@ impl Session {
             // TODO: Use a buffered reader.
             // TODO: Keep a single stream around for faster bi-lateral communication maybe?
             let (mut stream, address) = listener.accept().await?;
-            let address = match address {
-                SocketAddr::V4(ref addr) => {
-                    error!("Unexpected message from ipv4 address {addr:?}");
-                    continue;
-                }
-                SocketAddr::V6(addr) => addr,
+            let Some(peer_id) = session.peer_id_from_address(group_id, &address) else {
+                continue;
             };
-
-            // TODO: This lookup could be faster, really.
-            let peer_id = {
-                let groups = session.groups.read();
-                let Some(group) = groups.get(group_id.0) else {
-                    error!("Group {group_id:?} lost?");
-                    return Ok(());
-                };
-                let peers = session.peers.read();
-                let mut found_id = None;
-                for peer_id in &group.peers {
-                    let Some(peer) = peers.get(peer_id.0) else {
-                        error!("Peer {peer_id:?} lost?");
-                        continue;
+            let session = Arc::clone(&session);
+            tokio::spawn(async move {
+                trace!("Incoming connection from {address:?}");
+                loop {
+                    let buf = match super::protocol::read_binary_message(&mut stream).await {
+                        Ok(buf) => buf,
+                        Err(e) => {
+                            // XXX EOF isn't really unexpected.
+                            error!("Unexpected error reading message from {address:?}: {e:?}");
+                            return;
+                        }
                     };
-                    if peer.link_addr == *address.ip() {
-                        found_id = Some(*peer_id);
-                        break;
-                    }
+                    trace!(
+                        "Got message from socket: {:?}",
+                        String::from_utf8_lossy(&buf)
+                    );
+                    session
+                        .listener
+                        .peer_messaged(&session, peer_id, group_id, &buf);
                 }
-                match found_id {
-                    Some(id) => id,
-                    None => {
-                        error!("Message couldn't be mapped to a known peer in the group!");
-                        continue;
-                    }
-                }
-            };
+            });
+        }
+        #[allow(unreachable_code)]
+        Ok(())
+    }
 
+    async fn listen_to_peer_messages(
+        session: Arc<Self>,
+        group_id: GroupId,
+        scope_id: u32,
+    ) -> GenericResult<()> {
+        let local_addr = SocketAddrV6::new(
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+            P2P_PORT,
+            /* flowinfo = */ 0,
+            scope_id,
+        );
+        let listener = TcpListener::bind(local_addr).await?;
+        loop {
+            // TODO: Use a buffered reader.
+            // TODO: Keep a single stream around for faster bi-lateral communication maybe?
+            let (mut stream, address) = listener.accept().await?;
+            let Some(peer_id) = session.peer_id_from_address(group_id, &address) else {
+                continue;
+            };
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
@@ -418,7 +480,7 @@ impl Session {
         };
 
         if !is_go {
-            return Self::listen_to_group_messages(session, group_id, scope_id).await;
+            return Self::listen_to_peer_messages(session, group_id, scope_id).await;
         }
 
         trace!("We're GO");
@@ -443,7 +505,7 @@ impl Session {
                         let this_group = groups.get_mut(group_id.0).unwrap();
                         let this_peer = peers.get_mut(peer_id.0).unwrap();
                         debug_assert!(
-                            !this_group.peers.contains(&peer_id),
+                            !this_group.peers.contains_key(&peer_id),
                             "Peer already associated to group?"
                         );
                         debug_assert!(
@@ -451,7 +513,7 @@ impl Session {
                             "Group already associated to peer?"
                         );
                         this_peer.groups.push(group_id);
-                        this_group.peers.push(peer_id);
+                        this_group.peers.insert(peer_id, PeerGroupInfo::default());
                         peer_id
                     };
                     // TODO: Broadcast to non-GOs?
@@ -478,7 +540,7 @@ impl Session {
                         let this_group = groups.get_mut(group_id.0).unwrap();
                         let this_peer = peers.get_mut(peer_id.0).unwrap();
                         debug_assert!(
-                            this_group.peers.contains(&peer_id),
+                            this_group.peers.contains_key(&peer_id),
                             "Peer not associated to group?"
                         );
                         debug_assert!(
@@ -486,7 +548,7 @@ impl Session {
                             "Group not associated to peer?"
                         );
                         this_peer.groups.retain(|g| *g != group_id);
-                        this_group.peers.retain(|p| *p != peer_id);
+                        this_group.peers.remove(&peer_id);
                         peer_id
                     };
                     // TODO: Broadcast to non-GOs?
@@ -496,7 +558,7 @@ impl Session {
                 }
                 Ok(())
             },
-            Self::listen_to_group_messages(Arc::clone(&session), group_id, scope_id),
+            Self::listen_to_peer_messages(Arc::clone(&session), group_id, scope_id),
         )?;
         Ok(())
     }
@@ -605,8 +667,7 @@ impl Session {
                         proxy,
                         path: path.into(),
                         name,
-                        // XXX this is not the right address, we need the interface address...
-                        link_addr: utils::mac_addr_to_local_link_address(&dev_addr),
+                        dev_addr,
                         groups: Vec::new(),
                     });
 
@@ -654,14 +715,11 @@ impl Session {
                                     continue;
                                 }
                             };
-                            // TODO: Use IndexSet or some more clever data structure? Or maybe just
-                            // binary search.
-                            let Some(index) = group.peers.iter().position(|id| peer_id == *id)
-                            else {
-                                error!("Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers");
-                                continue;
-                            };
-                            group.peers.remove(index);
+                            let removed = group.peers.remove(&peer_id);
+                            debug_assert!(
+                                removed.is_some(),
+                                "Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers"
+                            );
                         }
                         for group_id in &groups_disconnected {
                             session
@@ -755,7 +813,7 @@ impl Session {
                                 iface_name,
                                 scope_id,
                                 is_go,
-                                peers: Vec::new(),
+                                peers: Default::default(),
                                 group_task: OnceLock::new(),
                             });
                             let id = GroupId(handle);
@@ -807,7 +865,7 @@ impl Session {
 
                     if !peers_lost.is_empty() {
                         let mut peers = session.peers.write();
-                        for peer_id in &peers_lost {
+                        for (peer_id, _info) in &peers_lost {
                             let peer = match peers.get_mut(peer_id.0) {
                                 Some(g) => g,
                                 None => {
@@ -825,7 +883,7 @@ impl Session {
                             peer.groups.remove(index);
                         }
 
-                        for peer_id in &peers_lost {
+                        for (peer_id, _info) in &peers_lost {
                             session
                                 .listener
                                 .peer_left_group(&session, group_id, *peer_id);
@@ -850,7 +908,27 @@ impl Session {
                 while let Some(msg) = go_negotiation_failure.next().await {
                     let args = msg.args()?;
                     let props = args.properties();
-                    trace!("GO negotiation failed: {props:?}");
+                    trace!("GO negotiation failed: {props:?}, retrying connection");
+
+                    let peer_path = match props.get("peer_object") {
+                        Some(&Value::ObjectPath(ref o)) => o.to_owned(),
+                        other => {
+                            error!("Expected an peer object path, got {other:?}");
+                            continue;
+                        }
+                    };
+
+                    let session = Arc::clone(&session);
+                    let peer = Value::from(peer_path);
+                    let method = Value::from(WPS_METHOD);
+                    let go_intent = Value::from(session.go_intent as i32);
+                    tokio::spawn(async move {
+                        let mut connect_args = HashMap::new();
+                        connect_args.insert("peer", &peer);
+                        connect_args.insert("wps_method", &method);
+                        connect_args.insert("go_intent", &go_intent);
+                        session.p2pdevice.connect(connect_args).await
+                    });
                 }
                 Ok(())
             },

@@ -9,12 +9,12 @@ use std::sync::Arc;
 
 /// A handle for a given peer.
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct PeerId(pub(crate) handy::Handle);
 
 /// A handle for a given group.
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct GroupId(pub(crate) handy::Handle);
 
 pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
