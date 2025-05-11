@@ -213,6 +213,10 @@ Gotchas:
    https://github.com/NetworkConfiguration/dhcpcd/issues/473 would allow to
    make the configuration specific to p2p interfaces at least.
 
+ * Need P2P Device Address to map interface to device addresses. Seems to be
+   exposed on Android, too, so fix outgoing:
+   https://lists.infradead.org/pipermail/hostap/2025-May/043428.html
+
 # High level goals
 
  * Get physical layer into a library form, with some automated tests.

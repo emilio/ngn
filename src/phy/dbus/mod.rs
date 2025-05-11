@@ -153,11 +153,6 @@ impl super::P2PSession for Session {
             return Err(trivial_error!("wpa_supplicant has no p2p support"));
         }
 
-        // TODO(emilio): Maybe remove this once stuff works more reliably, or do this based on the
-        // current log level.
-        trace!("Setting debug log level");
-        wpa_supplicant.set_debug_level("debug").await?;
-
         let p2pdevice = match init.interface_name {
             Some(iface) => {
                 trace!("Requested explicit interface {iface:?}");

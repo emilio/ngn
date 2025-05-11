@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 DEBUGGER=""
 DEBUGGER="rr"
 
+WPA_SUPPLICANT="wpa_supplicant"
+
 sudo systemctl stop wpa_supplicant
 sudo systemctl stop NetworkManager
 sudo killall wpa_supplicant
@@ -43,7 +45,7 @@ for iface in $IFACES; do
   sleep .5 # TODO: Make this more reliable
   ADDRESS=$(cat "$IFACE_DIR/dbus/log" | head -1)
   echo "Address for $iface is $ADDRESS"
-  sudo DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS $DEBUGGER wpa_supplicant -i $iface -c simple.conf -u 2>&1 | tee "$IFACE_DIR/wpa_supplicant.log" &
+  sudo DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS $DEBUGGER $WPA_SUPPLICANT -ddd -i $iface -c simple.conf -u 2>&1 | tee "$IFACE_DIR/wpa_supplicant.log" &
   sleep .5 # TODO: Make this more reliable
   DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS nohup $DEBUGGER ../target/$BUILD_TARGET\/$BUILD_MODE/examples/dbus 2>&1 | tee "$IFACE_DIR/client.log" &
   sleep .5 # TODO: Make this more reliable
