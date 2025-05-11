@@ -8,6 +8,7 @@ DEBUGGER=""
 DEBUGGER="rr"
 
 WPA_SUPPLICANT="wpa_supplicant"
+WPA_SUPPLICANT="../../hostap/wpa_supplicant/wpa_supplicant"
 
 sudo systemctl stop wpa_supplicant
 sudo systemctl stop NetworkManager

@@ -110,6 +110,8 @@ pub struct Session {
     listener: Arc<dyn P2PSessionListener<Self>>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
+    /// Our own P2P device address.
+    dev_addr: MacAddr,
 }
 
 impl Drop for Session {
@@ -229,6 +231,15 @@ impl super::P2PSession for Session {
             })
             .await?;
 
+        let dev_addr = p2pdevice.device_address().await?;
+        trace!("Own P2P device address: {dev_addr:?}");
+        let Some(dev_addr) = utils::to_mac_addr(&dev_addr) else {
+            return Err(trivial_error!(
+                "Expected a valid mac address from
+P2PDevice::device_address()"
+            ));
+        };
+
         trace!("Successfully initialized P2P session");
         let session = Arc::new(Self {
             system_bus,
@@ -237,6 +248,7 @@ impl super::P2PSession for Session {
             go_intent: init.go_intent,
             peers: Default::default(),
             groups: Default::default(),
+            dev_addr,
             listener,
             run_loop_task: RwLock::new(None),
         });
