@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use ngn::phy::{LoggerListener, P2PSession, P2PSessionListener, GroupId, PeerId};
+use ngn::phy::{GroupId, LoggerListener, P2PSession, P2PSessionListener, PeerId};
 use rand::Rng;
 use std::sync::Arc;
 
