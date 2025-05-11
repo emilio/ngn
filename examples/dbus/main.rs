@@ -54,10 +54,16 @@ async fn run() -> ngn::phy::GenericResult<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
 
     let interface_name = std::env::args().nth(1);
+    let mut device_name = "RustTest".to_owned();
+    if let Some(ref interface_name) = interface_name {
+        device_name.push_str(" (");
+        device_name.push_str(&interface_name);
+        device_name.push_str(")");
+    }
     let session = ngn::phy::dbus::Session::new(
         ngn::phy::dbus::SessionInit {
             interface_name: interface_name.as_deref(),
-            device_name: "RustTest",
+            device_name: &device_name,
             go_intent: 14,
         },
         Arc::new(Listener::default()),
