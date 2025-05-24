@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate log;
 
+mod ui;
+
+use adw::prelude::*;
 use ngn::phy::{GroupId, LoggerListener, P2PSession, P2PSessionListener, PeerId};
 use rand::Rng;
 use std::sync::Arc;
@@ -50,20 +53,11 @@ impl<S: P2PSession> P2PSessionListener<S> for Listener {
     }
 }
 
-async fn run() -> ngn::phy::GenericResult<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
-
-    let interface_name = std::env::args().nth(1);
-    let mut device_name = "RustTest".to_owned();
-    if let Some(ref interface_name) = interface_name {
-        device_name.push_str(" (");
-        device_name.push_str(&interface_name);
-        device_name.push_str(")");
-    }
+async fn run_dbus_p2p_control(interface_name: Option<&str>, device_name: &str) -> ngn::phy::GenericResult<()> {
     let session = ngn::phy::dbus::Session::new(
         ngn::phy::dbus::SessionInit {
-            interface_name: interface_name.as_deref(),
-            device_name: &device_name,
+            interface_name,
+            device_name,
             go_intent: 14,
         },
         Arc::new(Listener::default()),
@@ -78,14 +72,32 @@ async fn run() -> ngn::phy::GenericResult<()> {
     Ok(())
 }
 
-fn main() -> ngn::phy::GenericResult<()> {
+fn main() -> gtk::glib::ExitCode {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
+
+    let interface_name = std::env::args().nth(1);
+    let mut device_name = "RustTest".to_owned();
+    if let Some(ref interface_name) = interface_name {
+        device_name.push_str(" (");
+        device_name.push_str(&interface_name);
+        device_name.push_str(")");
+    }
+
+    let app = adw::Application::builder().application_id(ui::APP_ID).build();
+    let dev_name_clone = device_name.clone();
+    app.connect_activate(move |app| {
+        ui::build(app, &dev_name_clone)
+    });
+
     tokio::runtime::Builder::new_multi_thread()
         // 10 MiB should be plenty even for debug builds.
         .thread_stack_size(10 * 1024 * 1024)
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async {
-            run().await
-        })
+        .spawn(async move {
+            run_dbus_p2p_control(interface_name.as_deref(), &device_name).await.unwrap()
+        });
+
+    app.run()
 }
