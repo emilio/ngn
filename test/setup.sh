@@ -48,7 +48,11 @@ for iface in $IFACES; do
   echo "Address for $iface is $ADDRESS"
   sudo DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS $DEBUGGER $WPA_SUPPLICANT -ddd -i $iface -c simple.conf -u 2>&1 | tee "$IFACE_DIR/wpa_supplicant.log" &
   sleep .5 # TODO: Make this more reliable
-  DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS nohup $DEBUGGER ../target/$BUILD_TARGET\/$BUILD_MODE/examples/dbus 2>&1 | tee "$IFACE_DIR/client.log" &
+  # Vulkan crashes intermittently on my machine, and gpu crashes are no fun...
+  GSK_RENDERER=opengl \
+    INTERFACE_NAME=$iface \
+    DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS \
+    nohup $DEBUGGER ../target/$BUILD_TARGET\/$BUILD_MODE/examples/dbus 2>&1 | tee "$IFACE_DIR/client.log" &
   sleep .5 # TODO: Make this more reliable
 done
 

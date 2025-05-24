@@ -8,7 +8,7 @@
 mod store;
 pub mod wpa_supplicant;
 
-use super::{GenericResult, GroupId, P2PSessionListener, PeerId};
+use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 
 use crate::utils::{self, trivial_error};
 
@@ -142,7 +142,7 @@ async fn send_message_to(addr: &SocketAddrV6, message: &[u8]) -> GenericResult<(
 }
 
 #[async_trait::async_trait]
-impl super::P2PSession for Session {
+impl P2PSession for Session {
     type InitArgs<'a> = SessionInit<'a>;
 
     /// Create a new P2P session.
@@ -294,25 +294,11 @@ P2PDevice::device_address()"
         let peer_path = {
             let guard = self.peers.read();
             match guard.get(id.0) {
-                Some(p) => Value::from(p.path.to_owned()),
+                Some(p) => p.path.to_owned(),
                 None => return Err(trivial_error!("Can't locate peer")),
             }
         };
-        let mut args = HashMap::default();
-        let method = Value::from(WPS_METHOD);
-        let go_intent = Value::from(self.go_intent as i32);
-        let auto_join = Value::from(true);
-        args.insert("peer", &peer_path);
-        args.insert("auto_join", &auto_join);
-        args.insert("wps_method", &method);
-        args.insert("go_intent", &go_intent);
-        match self.p2pdevice.connect(args).await {
-            Ok(pin) => trace!("Connected with pin: {pin}"),
-            Err(e) => {
-                error!("Failed to connect to peer: {e:?}");
-                return Err(e.into());
-            }
-        }
+        self.connect_to_peer_by_path(peer_path).await?;
         Ok(())
     }
 
@@ -955,6 +941,11 @@ impl Session {
                     let passwd_id = args.dev_passwd_id();
                     let go_intent = args.device_go_intent();
                     trace!("GO negotiation request from {path} ({passwd_id} / {go_intent})");
+                    // Let's try to connect to the peer directly.
+                    // TODO(emilio): Maybe confirm?
+                    session
+                        .connect_to_peer_by_path(path.to_owned().into())
+                        .await?;
                 }
                 Ok(())
             },
@@ -1058,6 +1049,26 @@ impl Session {
             },
         )?;
 
+        Ok(())
+    }
+
+    async fn connect_to_peer_by_path(&self, peer_path: OwnedObjectPath) -> Result<(), zbus::Error> {
+        let mut args = HashMap::default();
+        let method = Value::from(WPS_METHOD);
+        let go_intent = Value::from(self.go_intent as i32);
+        let auto_join = Value::from(true);
+        let peer_path = Value::from(peer_path);
+        args.insert("peer", &peer_path);
+        args.insert("auto_join", &auto_join);
+        args.insert("wps_method", &method);
+        args.insert("go_intent", &go_intent);
+        match self.p2pdevice.connect(args).await {
+            Ok(pin) => trace!("Connected with pin: {pin}"),
+            Err(e) => {
+                error!("Failed to connect to peer: {e:?}");
+                return Err(e);
+            }
+        }
         Ok(())
     }
 }
