@@ -5,17 +5,28 @@ edition = "2021"
 description = "P2P"
 
 [dependencies]
-async-trait = "0.1"
+# Async programming runtime and utilities.
 tokio = { version = "1", features = ["full"] }
-zbus = { version = "5", default-features = false, features = ["tokio"] }
+async-trait = "0.1"
 futures-lite = "2.6"
+# D-Bus support.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+# Logging
 env_logger = "0.11"
-parking_lot = "0.12"
-handy = "0.1"
-rand = "0.9"
 log = "0.4"
+# Fast synchronization primitives
+parking_lot = "0.12"
+# Handle maps
+handy = "0.1"
+# Random number generation.
+rand = "0.9"
+# Binary serialization.
+bincode = "2"
+bincode_derive = "2"
+# Networking and low-level utilities.
 macaddr = "1"
 libc = "0.2"
+# UI toolkit
 gtk = { version = "0.9.6", package = "gtk4", features = ["v4_18"] }
 adw = { version = "0.7.2", package = "libadwaita" }
 

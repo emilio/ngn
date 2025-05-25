@@ -9,6 +9,7 @@ pub enum Event {
     PeerDiscovered { id: PeerId, name: String },
     PeerConnected { id: PeerId },
     PeerLost { id: PeerId },
+    PeerDiscoveryStopped,
 }
 
 #[derive(Debug)]
@@ -62,6 +63,25 @@ impl<S: P2PSession> P2PSessionListener<S> for Listener {
             .send(Event::PeerLost { id: peer_id })
             .unwrap();
     }
+
+    fn peer_discovery_stopped(&self, sess: &S) {
+        self.logger.peer_discovery_stopped(sess);
+        self.ui_event_sender
+            .send(Event::PeerDiscoveryStopped)
+            .unwrap();
+    }
+}
+
+fn start_discovery(
+    session: &ngn::phy::dbus::Session,
+    peer_list_box: &gtk::ListBox,
+    button: &gtk::Button,
+) {
+    // TODO: Maybe shouldn't clear the list?
+    peer_list_box.remove_all();
+    button.add_css_class("discovering");
+    let session = session.to_strong();
+    super::rt().spawn(async move { session.discover_peers().await });
 }
 
 pub fn build(
@@ -80,13 +100,11 @@ pub fn build(
     {
         let session = session.to_strong();
         let peer_list_box = peer_list_box.clone();
-        refresh_button.connect_clicked(move |_| {
-            // TODO: Maybe shouldn't clear the list?
-            peer_list_box.remove_all();
-            let session = Arc::clone(&session);
-            super::rt().spawn(async move { session.discover_peers().await });
+        refresh_button.connect_clicked(move |button| {
+            start_discovery(&session, &peer_list_box, button);
         });
     }
+    start_discovery(&session, &peer_list_box, &refresh_button);
 
     headerbar.pack_end(&refresh_button);
     content.append(&headerbar);
@@ -142,17 +160,12 @@ pub fn build(
                         i += 1;
                     }
                 }
+                Event::PeerDiscoveryStopped => {
+                    refresh_button.remove_css_class("discovering");
+                }
             }
         }
     });
-
-    /*
-    let sess = sess.to_strong();
-    tokio::spawn(async move {
-        if let Err(e) = sess.connect_to_peer(peer_id).await {
-            error!("Couldn't connect to {peer_id:?}: {e}");
-        }
-    });*/
 
     // Create a window and set the title
     let window = adw::ApplicationWindow::builder()

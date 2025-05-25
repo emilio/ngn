@@ -6,9 +6,11 @@
 //!    version: u16
 //!    len: u32
 //! Followed by `len` bytes.
+use bincode::{Decode, Encode};
+use macaddr::MacAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::trivial_error;
+use crate::{trivial_error, utils};
 
 use super::GenericResult;
 
@@ -64,4 +66,44 @@ pub async fn write_binary_message(
     writer.write_all(msg).await?;
 
     Ok(())
+}
+
+/// A MacAddr-like type that we can easily binary encode / decode.
+#[derive(Encode, Decode, Debug)]
+pub struct DecodableMacAddr {
+    is_v8: bool,
+    bytes: [u8; 8],
+}
+
+impl From<MacAddr> for DecodableMacAddr {
+    fn from(addr: MacAddr) -> Self {
+        let is_v8 = addr.is_v8();
+        let mac_bytes = addr.as_bytes();
+        let mut bytes = [0u8; 8];
+        bytes[..mac_bytes.len()].copy_from_slice(mac_bytes);
+        Self { is_v8, bytes }
+    }
+}
+
+impl DecodableMacAddr {
+    pub fn to_mac_addr(&self) -> MacAddr {
+        utils::to_mac_addr(if self.is_v8 {
+            &self.bytes
+        } else {
+            &self.bytes[..6]
+        }).unwrap()
+    }
+}
+
+/// Control messages defined for the IPv6-based protocol. Note this must be independent of the
+/// underlying platform (e.g. dbus vs. android).
+///
+/// TODO(emilio): The binary message should probably be stable. Maybe use protobuf or (god forbid)
+/// json or something?
+#[derive(Encode, Decode, Debug)]
+pub enum ControlMessage {
+    /// Associate this sender with a pre-existing WifiP2P peer.
+    /// The mac address is the device address of the P2P interface used for discovery and
+    /// communication.
+    Associate(DecodableMacAddr),
 }

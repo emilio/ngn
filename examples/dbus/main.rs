@@ -18,6 +18,7 @@ pub fn rt() -> &'static tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()
             // 10 MiB should be plenty even for debug builds.
             .thread_stack_size(10 * 1024 * 1024)
+            .worker_threads(3)
             .enable_all()
             .build()
             .unwrap()
@@ -74,7 +75,7 @@ fn main() -> gtk::glib::ExitCode {
             if !iface_for_logging.is_empty() {
                 write!(buf, " {}", iface_for_logging)?;
             }
-            writeln!(buf, "] {}", record.args())
+            writeln!(buf, " p:{}] {}", std::process::id(), record.args())
         })
         .init();
 

@@ -10,15 +10,18 @@ pub mod wpa_supplicant;
 
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 
-use crate::utils::{self, trivial_error};
+use crate::{
+    phy::protocol::ControlMessage,
+    utils::{self, trivial_error},
+};
 
 use futures_lite::StreamExt;
-use log::{error, trace};
+use log::{error, trace, warn};
 use macaddr::MacAddr;
 use parking_lot::RwLock;
 use std::{
-    collections::HashMap,
-    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
+    collections::{hash_map::Entry, HashMap},
+    net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -67,7 +70,7 @@ struct Group {
     /// Path of the group.
     path: OwnedObjectPath,
     /// Mac address of the interface, useful to get a local link address for a group owner.
-    iface_addr: MacAddr,
+    go_iface_addr: MacAddr,
     /// Name of the interface.
     iface_name: String,
     /// Scope id of the interface. This can be derived by the name via if_nametoindex.
@@ -134,6 +137,7 @@ pub struct SessionInit<'a> {
 }
 
 async fn send_message_to(addr: &SocketAddrV6, message: &[u8]) -> GenericResult<()> {
+    trace!("send_message_to({addr:?}, {})", message.len());
     let mut stream =
         match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
             Ok(stream) => stream,
@@ -380,11 +384,30 @@ impl Session {
         return None;
     }
 
+    async fn send_control_message(
+        &self,
+        link_local_address: Ipv6Addr,
+        scope_id: u32,
+        message: ControlMessage,
+    ) -> GenericResult<()> {
+        trace!("Session::send_control_message({link_local_address:?}, {scope_id}, {message:?})");
+        let local_addr = SocketAddrV6::new(
+            link_local_address,
+            CONTROL_PORT,
+            /* flowinfo = */ 0,
+            scope_id,
+        );
+        let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
+        send_message_to(&local_addr, &msg).await
+    }
+
     async fn establish_control_channel(
         session: Arc<Self>,
         group_id: GroupId,
         scope_id: u32,
+        is_go: bool,
     ) -> GenericResult<()> {
+        trace!("Session::establish_control_channel({group_id:?}, {scope_id}, {is_go})");
         let local_addr = SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
             CONTROL_PORT,
@@ -396,9 +419,6 @@ impl Session {
             // TODO: Use a buffered reader.
             // TODO: Keep a single stream around for faster bi-lateral communication maybe?
             let (mut stream, address) = listener.accept().await?;
-            let Some(peer_id) = session.peer_id_from_address(group_id, &address) else {
-                continue;
-            };
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
@@ -411,13 +431,89 @@ impl Session {
                             return;
                         }
                     };
-                    trace!(
-                        "Got message from socket: {:?}",
-                        String::from_utf8_lossy(&buf)
-                    );
-                    session
-                        .listener
-                        .peer_messaged(&session, peer_id, group_id, &buf);
+                    let Ok((control_message, len)) = bincode::decode_from_slice::<ControlMessage, _>(
+                        &buf,
+                        bincode::config::standard(),
+                    ) else {
+                        error!("Failed to decode binary control message {buf:?}");
+                        return;
+                    };
+                    if len != buf.len() {
+                        error!("Unexpected decoded message length {} vs {}", len, buf.len());
+                        return;
+                    }
+                    trace!("Got control message {control_message:?} on group {group_id:?}");
+                    match control_message {
+                        ControlMessage::Associate(mac) => {
+                            let mac = mac.to_mac_addr();
+                            let Some(peer_id) = session.find_peer_id_by_dev_addr(&mac) else {
+                                error!("Couldn't associate with {mac:?}");
+                                continue;
+                            };
+                            let link_local_address = match address.ip() {
+                                IpAddr::V4(v4addr) => {
+                                    warn!("Unexpected ipv4 address {v4addr:?} in control message");
+                                    continue;
+                                }
+                                IpAddr::V6(v6addr) => v6addr.clone(),
+                            };
+
+                            let is_new_connection = {
+                                let mut groups = session.groups.write();
+                                let Some(group) = groups.get_mut(group_id.0) else {
+                                    warn!("Group {group_id:?} was torn down?");
+                                    continue;
+                                };
+                                match group.peers.entry(peer_id) {
+                                    Entry::Occupied(mut o) => {
+                                        let info = o.get_mut();
+                                        if info
+                                            .link_local_address
+                                            .is_some_and(|a| a != link_local_address)
+                                        {
+                                            error!("Forbidding re-association of {link_local_address:?}");
+                                            continue;
+                                        }
+                                        o.get_mut().link_local_address = Some(link_local_address);
+                                        false
+                                    }
+                                    Entry::Vacant(v) => {
+                                        v.insert(PeerGroupInfo {
+                                            link_local_address: Some(link_local_address),
+                                        });
+                                        true
+                                    }
+                                }
+                            };
+                            if is_go {
+                                // Try to send the association request back to the peer. This
+                                // ensures that the peer notifies of the connection (via the
+                                // is_new_connection code-path).
+                                //
+                                // TODO(emilio): It'd be a lot cleaner if the peer would've access
+                                // to the GO device address on negotiation success. Then, it could
+                                // just associate and notify itself...
+                                let result = session
+                                    .send_control_message(
+                                        link_local_address,
+                                        scope_id,
+                                        ControlMessage::Associate(session.dev_addr.into()),
+                                    )
+                                    .await;
+                                if let Err(e) = result {
+                                    error!("Failed to send associate message from GO to {peer_id:?}: {e}");
+                                }
+                            }
+                            if is_new_connection {
+                                trace!(
+                                    "Notifying of new association of {peer_id:?} to {group_id:?}"
+                                );
+                                session
+                                    .listener
+                                    .peer_joined_group(&session, group_id, peer_id);
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -430,6 +526,7 @@ impl Session {
         group_id: GroupId,
         scope_id: u32,
     ) -> GenericResult<()> {
+        trace!("Session::listen_to_peer_mesages({group_id:?}, {scope_id})");
         let local_addr = SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
             P2P_PORT,
@@ -442,6 +539,7 @@ impl Session {
             // TODO: Keep a single stream around for faster bi-lateral communication maybe?
             let (mut stream, address) = listener.accept().await?;
             let Some(peer_id) = session.peer_id_from_address(group_id, &address) else {
+                warn!("Got message from {address:?} but couldn't map that to a peer in group {group_id:?}");
                 continue;
             };
             let session = Arc::clone(&session);
@@ -473,8 +571,8 @@ impl Session {
     async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
         trace!("Session::group_task({group_id:?})");
 
-        let (is_go, scope_id, proxy) = match session.groups.read().get(group_id.0) {
-            Some(g) => (g.is_go, g.scope_id, g.proxy.clone()),
+        let (is_go, go_iface_addr, scope_id, proxy) = match session.groups.read().get(group_id.0) {
+            Some(g) => (g.is_go, g.go_iface_addr, g.scope_id, g.proxy.clone()),
             None => {
                 error!("Didn't find {group_id:?} on group_task start!");
                 return Err(trivial_error!("Didn't find group on group_task start!"));
@@ -482,10 +580,23 @@ impl Session {
         };
 
         if !is_go {
-            return Self::listen_to_peer_messages(session, group_id, scope_id).await;
+            trace!(" > not GO");
+            let go_local_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
+            let control_message = ControlMessage::Associate(session.dev_addr.into());
+            tokio::try_join!(
+                Self::listen_to_peer_messages(Arc::clone(&session), group_id, scope_id),
+                Self::establish_control_channel(Arc::clone(&session), group_id, scope_id, is_go),
+                async move {
+                    trace!("Trying to send control message to {go_local_addr:?}");
+                    session
+                        .send_control_message(go_local_addr, scope_id, control_message)
+                        .await
+                },
+            )?;
+            return Ok(());
         }
 
-        trace!("We're GO");
+        trace!(" > we're GO");
         let mut peer_joined = proxy.receive_peer_joined().await?;
         let mut peer_left = proxy.receive_peer_disconnected().await?;
 
@@ -561,6 +672,7 @@ impl Session {
                 Ok(())
             },
             Self::listen_to_peer_messages(Arc::clone(&session), group_id, scope_id),
+            Self::establish_control_channel(Arc::clone(&session), group_id, scope_id, is_go),
         )?;
         Ok(())
     }
@@ -642,7 +754,7 @@ impl Session {
             async {
                 while let Some(_msg) = find_stopped.next().await {
                     trace!("Find stopped");
-                    session.listener.peer_discovery_stopped();
+                    session.listener.peer_discovery_stopped(&session);
                     // TODO: Maybe restart?
                     // p2pdevice.find(HashMap::default()).await?;
                 }
@@ -815,27 +927,33 @@ impl Session {
                     trace!("Group BSSID (GO interface address) is {go_iface_addr:?}");
 
                     let is_go = props.get("role") == Some(&Value::from("GO"));
-                    let id =
-                        {
-                            let mut groups = session.groups.write();
-                            let handle = groups.insert(Group {
-                                proxy: group,
-                                iface,
-                                iface_path: iface_path.into(),
-                                path: group_path.into(),
-                                iface_addr: go_iface_addr,
-                                iface_name,
-                                scope_id,
-                                is_go,
-                                peers: Default::default(),
-                                group_task: OnceLock::new(),
-                            });
-                            let id = GroupId(handle);
-                            groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
-                                tokio::spawn(Session::group_task(session.clone(), id))
-                            });
-                            id
-                        };
+                    let id = {
+                        let mut groups = session.groups.write();
+                        let handle = groups.insert(Group {
+                            proxy: group,
+                            iface,
+                            iface_path: iface_path.into(),
+                            path: group_path.into(),
+                            go_iface_addr,
+                            iface_name,
+                            scope_id,
+                            is_go,
+                            peers: Default::default(),
+                            group_task: OnceLock::new(),
+                        });
+                        let id = GroupId(handle);
+                        groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
+                            let session = session.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = Session::group_task(session, id).await {
+                                    error!("Group task for {id:?} failed with {e}");
+                                    return Err(e);
+                                }
+                                Ok(())
+                            })
+                        });
+                        id
+                    };
 
                     session.listener.joined_group(&session, id, is_go);
                 }
@@ -1060,7 +1178,6 @@ impl Session {
                         peer.dev_addr
                     };
 
-
                     let go_groups = {
                         let mut go_groups = vec![];
                         let groups = session.groups.read();
@@ -1074,8 +1191,13 @@ impl Session {
                         let Ok(wps) = wpa_supplicant::wps::WPSProxy::new(
                             &session.system_bus,
                             &group_iface_path,
-                        ).await else {
-                            error!("Couldn't find WPS interface for group iface {:?}", group_iface_path);
+                        )
+                        .await
+                        else {
+                            error!(
+                                "Couldn't find WPS interface for group iface {:?}",
+                                group_iface_path
+                            );
                             continue;
                         };
                         let mut params = HashMap::new();
@@ -1124,5 +1246,16 @@ impl Session {
             }
         }
         Ok(())
+    }
+
+    fn find_peer_id_by_dev_addr(&self, dev_addr: &MacAddr) -> Option<PeerId> {
+        // TODO(emilio): Make this non-linear.
+        let peers = self.peers.read();
+        for (id, peer) in peers.iter_with_handles() {
+            if peer.dev_addr == *dev_addr {
+                return Some(PeerId(id));
+            }
+        }
+        None
     }
 }

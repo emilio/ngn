@@ -31,7 +31,7 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     /// Called when peer discovery stops, either by timeout or explicitly.
     ///
     /// TODO(emilio): What more info can we provide?
-    fn peer_discovery_stopped(&self) {
+    fn peer_discovery_stopped(&self, _: &S) {
         trace!("Listener::peer_discovery_stopped()");
     }
 

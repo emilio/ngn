@@ -67,6 +67,10 @@ impl<T: DbusPath> DbusStore<T> {
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.map.iter()
     }
+
+    pub fn iter_with_handles(&self) -> impl Iterator<Item = (Handle, &T)> {
+        self.map.iter_with_handles()
+    }
 }
 
 impl<T> Default for DbusStore<T> {
