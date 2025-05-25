@@ -68,6 +68,14 @@ pub async fn write_binary_message(
     Ok(())
 }
 
+#[derive(Encode, Decode, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct P2pPorts {
+    /// The port for the control channel.
+    pub control: u16,
+    /// The port for the p2p communication channel.
+    pub p2p: u16,
+}
+
 /// A MacAddr-like type that we can easily binary encode / decode.
 #[derive(Encode, Decode, Debug)]
 pub struct DecodableMacAddr {
@@ -91,7 +99,8 @@ impl DecodableMacAddr {
             &self.bytes
         } else {
             &self.bytes[..6]
-        }).unwrap()
+        })
+        .unwrap()
     }
 }
 
@@ -102,8 +111,12 @@ impl DecodableMacAddr {
 /// json or something?
 #[derive(Encode, Decode, Debug)]
 pub enum ControlMessage {
-    /// Associate this sender with a pre-existing WifiP2P peer.
-    /// The mac address is the device address of the P2P interface used for discovery and
-    /// communication.
-    Associate(DecodableMacAddr),
+    /// Associate this sender with a pre-existing WifiP2P peer, communicating the ports we're
+    /// listening to.
+    Associate {
+        /// The mac address is the device address of the P2P interface used for discovery and
+        /// communication.
+        dev_addr: DecodableMacAddr,
+        ports: P2pPorts,
+    },
 }

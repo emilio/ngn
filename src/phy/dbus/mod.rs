@@ -11,7 +11,7 @@ pub mod wpa_supplicant;
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 
 use crate::{
-    phy::protocol::ControlMessage,
+    phy::protocol::{ControlMessage, P2pPorts},
     utils::{self, trivial_error},
 };
 
@@ -52,11 +52,18 @@ impl DbusPath for Peer {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct PeerAddress {
+    link_local_address: Ipv6Addr,
+    ports: P2pPorts,
+}
+
 /// Per group association for a given peer.
 #[derive(Debug, Default)]
 struct PeerGroupInfo {
-    /// The link-local address of this peer, if known.
-    link_local_address: Option<Ipv6Addr>,
+    /// The link-local address of this peer, and the ports it uses to listen to connections, if
+    /// known.
+    address: Option<PeerAddress>,
 }
 
 #[derive(Debug)]
@@ -99,9 +106,7 @@ impl DbusPath for Group {
     }
 }
 
-// TODO: Do not hardcode, perhaps?
-const P2P_PORT: u16 = 9000;
-const CONTROL_PORT: u16 = 9001;
+const GO_CONTROL_PORT: u16 = 9001;
 
 /// Global state for a P2P session.
 #[derive(Debug)]
@@ -309,7 +314,7 @@ P2PDevice::device_address()"
     }
 
     async fn message_peer(&self, id: PeerId, message: &[u8]) -> GenericResult<()> {
-        let (peer_link_addr, scope_id) = {
+        let (peer_address, scope_id) = {
             let peers = self.peers.read();
             let groups = self.groups.read();
             let Some(peer) = peers.get(id.0) else {
@@ -324,19 +329,19 @@ P2PDevice::device_address()"
                 // TODO: Maybe we want to call connect_to_peer automatically?
                 return Err(trivial_error!("Group not found"));
             };
-            let Some(address) = group
-                .peers
-                .get(&id)
-                .and_then(|info| info.link_local_address.clone())
-            else {
+            let Some(address) = group.peers.get(&id).and_then(|info| info.address.clone()) else {
                 return Err(trivial_error!(
                     "Peer doesn't have a link local address (yet?)"
                 ));
             };
             (address, group.scope_id)
         };
-        let socket_addr =
-            SocketAddrV6::new(peer_link_addr, P2P_PORT, /* flowinfo = */ 0, scope_id);
+        let socket_addr = SocketAddrV6::new(
+            peer_address.link_local_address,
+            peer_address.ports.p2p,
+            /* flowinfo = */ 0,
+            scope_id,
+        );
         utils::retry_timeout(Duration::from_secs(2), 5, || {
             send_message_to(&socket_addr, message)
         })
@@ -373,10 +378,7 @@ impl Session {
             return None;
         };
         for (peer_id, info) in &group.peers {
-            if info
-                .link_local_address
-                .is_some_and(|addr| addr == *address.ip())
-            {
+            if info.address.as_ref().is_some_and(|addr| addr.link_local_address == *address.ip()) {
                 return Some(*peer_id);
             }
         }
@@ -387,13 +389,14 @@ impl Session {
     async fn send_control_message(
         &self,
         link_local_address: Ipv6Addr,
+        control_port: u16,
         scope_id: u32,
         message: ControlMessage,
     ) -> GenericResult<()> {
         trace!("Session::send_control_message({link_local_address:?}, {scope_id}, {message:?})");
         let local_addr = SocketAddrV6::new(
             link_local_address,
-            CONTROL_PORT,
+            control_port,
             /* flowinfo = */ 0,
             scope_id,
         );
@@ -403,22 +406,19 @@ impl Session {
 
     async fn establish_control_channel(
         session: Arc<Self>,
+        control_listener: TcpListener,
         group_id: GroupId,
         scope_id: u32,
+        own_ports: P2pPorts,
         is_go: bool,
     ) -> GenericResult<()> {
-        trace!("Session::establish_control_channel({group_id:?}, {scope_id}, {is_go})");
-        let local_addr = SocketAddrV6::new(
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-            CONTROL_PORT,
-            /* flowinfo = */ 0,
-            scope_id,
+        trace!(
+            "Session::establish_control_channel({group_id:?}, {scope_id}, {own_ports:?}, {is_go})"
         );
-        let listener = TcpListener::bind(local_addr).await?;
         loop {
             // TODO: Use a buffered reader.
             // TODO: Keep a single stream around for faster bi-lateral communication maybe?
-            let (mut stream, address) = listener.accept().await?;
+            let (mut stream, address) = control_listener.accept().await?;
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
@@ -444,10 +444,10 @@ impl Session {
                     }
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
-                        ControlMessage::Associate(mac) => {
-                            let mac = mac.to_mac_addr();
-                            let Some(peer_id) = session.find_peer_id_by_dev_addr(&mac) else {
-                                error!("Couldn't associate with {mac:?}");
+                        ControlMessage::Associate { dev_addr, ports } => {
+                            let dev_addr = dev_addr.to_mac_addr();
+                            let Some(peer_id) = session.find_peer_id_by_dev_addr(&dev_addr) else {
+                                error!("Couldn't associate with {dev_addr:?}");
                                 continue;
                             };
                             let link_local_address = match address.ip() {
@@ -464,22 +464,23 @@ impl Session {
                                     warn!("Group {group_id:?} was torn down?");
                                     continue;
                                 };
+                                let address = PeerAddress {
+                                    link_local_address,
+                                    ports,
+                                };
                                 match group.peers.entry(peer_id) {
                                     Entry::Occupied(mut o) => {
                                         let info = o.get_mut();
-                                        if info
-                                            .link_local_address
-                                            .is_some_and(|a| a != link_local_address)
-                                        {
-                                            error!("Forbidding re-association of {link_local_address:?}");
+                                        if info.address.as_ref().is_some_and(|a| *a != address) {
+                                            error!("Forbidding re-association of {address:?}");
                                             continue;
                                         }
-                                        o.get_mut().link_local_address = Some(link_local_address);
+                                        o.get_mut().address = Some(address);
                                         false
                                     }
                                     Entry::Vacant(v) => {
                                         v.insert(PeerGroupInfo {
-                                            link_local_address: Some(link_local_address),
+                                            address: Some(address),
                                         });
                                         true
                                     }
@@ -496,8 +497,12 @@ impl Session {
                                 let result = session
                                     .send_control_message(
                                         link_local_address,
+                                        ports.control,
                                         scope_id,
-                                        ControlMessage::Associate(session.dev_addr.into()),
+                                        ControlMessage::Associate {
+                                            dev_addr: session.dev_addr.into(),
+                                            ports: own_ports,
+                                        },
                                     )
                                     .await;
                                 if let Err(e) = result {
@@ -523,17 +528,11 @@ impl Session {
 
     async fn listen_to_peer_messages(
         session: Arc<Self>,
+        listener: TcpListener,
         group_id: GroupId,
         scope_id: u32,
     ) -> GenericResult<()> {
-        trace!("Session::listen_to_peer_mesages({group_id:?}, {scope_id})");
-        let local_addr = SocketAddrV6::new(
-            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-            P2P_PORT,
-            /* flowinfo = */ 0,
-            scope_id,
-        );
-        let listener = TcpListener::bind(local_addr).await?;
+        trace!("Session::listen_to_peer_messages({group_id:?}, {scope_id})");
         loop {
             // TODO: Use a buffered reader.
             // TODO: Keep a single stream around for faster bi-lateral communication maybe?
@@ -579,17 +578,57 @@ impl Session {
             }
         };
 
+        let (control_listener, p2p_listener) = tokio::try_join!(
+            TcpListener::bind(SocketAddrV6::new(
+                Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+                if is_go { GO_CONTROL_PORT } else { 0 },
+                /* flowinfo = */ 0,
+                scope_id,
+            )),
+            TcpListener::bind(SocketAddrV6::new(
+                Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
+                0,
+                /* flowinfo = */ 0,
+                scope_id,
+            )),
+        )?;
+
+        let my_ports = P2pPorts {
+            control: control_listener.local_addr()?.port(),
+            p2p: p2p_listener.local_addr()?.port(),
+        };
+
         if !is_go {
             trace!(" > not GO");
             let go_local_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
-            let control_message = ControlMessage::Associate(session.dev_addr.into());
+            let control_message = ControlMessage::Associate {
+                dev_addr: session.dev_addr.into(),
+                ports: my_ports,
+            };
             tokio::try_join!(
-                Self::listen_to_peer_messages(Arc::clone(&session), group_id, scope_id),
-                Self::establish_control_channel(Arc::clone(&session), group_id, scope_id, is_go),
+                Self::listen_to_peer_messages(
+                    Arc::clone(&session),
+                    p2p_listener,
+                    group_id,
+                    scope_id
+                ),
+                Self::establish_control_channel(
+                    Arc::clone(&session),
+                    control_listener,
+                    group_id,
+                    scope_id,
+                    my_ports,
+                    is_go
+                ),
                 async move {
                     trace!("Trying to send control message to {go_local_addr:?}");
                     session
-                        .send_control_message(go_local_addr, scope_id, control_message)
+                        .send_control_message(
+                            go_local_addr,
+                            GO_CONTROL_PORT,
+                            scope_id,
+                            control_message,
+                        )
                         .await
                 },
             )?;
@@ -671,8 +710,15 @@ impl Session {
                 }
                 Ok(())
             },
-            Self::listen_to_peer_messages(Arc::clone(&session), group_id, scope_id),
-            Self::establish_control_channel(Arc::clone(&session), group_id, scope_id, is_go),
+            Self::listen_to_peer_messages(Arc::clone(&session), p2p_listener, group_id, scope_id),
+            Self::establish_control_channel(
+                Arc::clone(&session),
+                control_listener,
+                group_id,
+                scope_id,
+                my_ports,
+                is_go
+            ),
         )?;
         Ok(())
     }
