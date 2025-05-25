@@ -8,6 +8,7 @@ DEBUGGER=""
 DEBUGGER="rr"
 
 WPA_SUPPLICANT="wpa_supplicant"
+WPA_SUPPLICANT="../../hostap/wpa_supplicant/wpa_supplicant -ddd" # For really verbose logging.
 WPA_SUPPLICANT="../../hostap/wpa_supplicant/wpa_supplicant"
 
 sudo systemctl stop wpa_supplicant
@@ -46,10 +47,11 @@ for iface in $IFACES; do
   sleep .5 # TODO: Make this more reliable
   ADDRESS=$(cat "$IFACE_DIR/dbus/log" | head -1)
   echo "Address for $iface is $ADDRESS"
-  sudo DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS $DEBUGGER $WPA_SUPPLICANT -ddd -i $iface -c simple.conf -u 2>&1 | tee "$IFACE_DIR/wpa_supplicant.log" &
+  sudo DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS $DEBUGGER $WPA_SUPPLICANT -i $iface -c simple.conf -u 2>&1 | tee "$IFACE_DIR/wpa_supplicant.log" &
   sleep .5 # TODO: Make this more reliable
   # Vulkan crashes intermittently on my machine, and gpu crashes are no fun...
   GSK_RENDERER=opengl \
+    RUST_BACKTRACE=1 \
     INTERFACE_NAME=$iface \
     DBUS_SYSTEM_BUS_ADDRESS=$ADDRESS \
     nohup $DEBUGGER ../target/$BUILD_TARGET\/$BUILD_MODE/examples/dbus 2>&1 | tee "$IFACE_DIR/client.log" &

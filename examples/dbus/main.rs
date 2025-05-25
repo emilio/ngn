@@ -6,7 +6,11 @@ mod ui;
 use adw::prelude::*;
 use gtk::gdk::Display;
 use ngn::phy::P2PSession;
-use std::sync::{Arc, OnceLock};
+use std::{
+    borrow::Cow,
+    io::Write,
+    sync::{Arc, OnceLock},
+};
 
 pub fn rt() -> &'static tokio::runtime::Runtime {
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -52,8 +56,6 @@ fn load_css() {
 }
 
 fn main() -> gtk::glib::ExitCode {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace")).init();
-
     let interface_name = std::env::var("INTERFACE_NAME").ok();
     let mut device_name = "RustTest".to_owned();
     if let Some(ref interface_name) = interface_name {
@@ -61,6 +63,20 @@ fn main() -> gtk::glib::ExitCode {
         device_name.push_str(&interface_name);
         device_name.push_str(")");
     }
+
+    let iface_for_logging = interface_name.clone().unwrap_or_default();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
+        .format(move |buf, record| {
+            write!(buf, "[{}", record.level())?;
+            if let Some(f) = record.file() {
+                write!(buf, " {}:{}", f, record.line().unwrap_or(0))?;
+            }
+            if !iface_for_logging.is_empty() {
+                write!(buf, " {}", iface_for_logging)?;
+            }
+            writeln!(buf, "] {}", record.args())
+        })
+        .init();
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let listener = Arc::new(ui::Listener::new(tx));

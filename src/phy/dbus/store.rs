@@ -24,7 +24,7 @@ impl<T: DbusPath> DbusStore<T> {
         let path = el.path().as_str().to_owned();
         let handle = self.map.insert(el);
         let old = self.path_to_handle.insert(path, handle);
-        debug_assert!(old.is_none(), "Existing group with the same DBUS path?");
+        debug_assert!(old.is_none(), "Existing item with the same DBUS path?");
         handle
     }
 
@@ -51,11 +51,21 @@ impl<T: DbusPath> DbusStore<T> {
         element
     }
 
+    pub fn get_by_path_mut(&mut self, path: &ObjectPath) -> Option<&mut T> {
+        let element = self.get_mut(self.id_by_path(path)?);
+        debug_assert!(element.is_some(), "Found path, but not handle?");
+        element
+    }
+
     pub fn remove(&mut self, id: Handle) -> Option<T> {
         let el = self.map.remove(id)?;
         let handle = self.path_to_handle.remove(el.path().as_str());
         debug_assert_eq!(handle, Some(id), "Wrong path to handle association?");
         Some(el)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.map.iter()
     }
 }
 

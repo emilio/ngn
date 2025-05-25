@@ -62,6 +62,8 @@ struct Group {
     proxy: wpa_supplicant::group::GroupProxy<'static>,
     /// Proxy to the interface object that connects the nodes in this group.
     iface: wpa_supplicant::interface::InterfaceProxy<'static>,
+    /// DBUS Path of the interface.
+    iface_path: OwnedObjectPath,
     /// Path of the group.
     path: OwnedObjectPath,
     /// Mac address of the interface, useful to get a local link address for a group owner.
@@ -385,7 +387,7 @@ impl Session {
     ) -> GenericResult<()> {
         let local_addr = SocketAddrV6::new(
             Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
-            P2P_PORT,
+            CONTROL_PORT,
             /* flowinfo = */ 0,
             scope_id,
         );
@@ -663,13 +665,24 @@ impl Session {
                         continue;
                     };
 
-                    let handle = session.peers.write().insert(Peer {
-                        proxy,
-                        path: path.into(),
-                        name,
-                        dev_addr,
-                        groups: Vec::new(),
-                    });
+                    let handle = {
+                        let mut peers = session.peers.write();
+                        if let Some(id) = peers.id_by_path(&path) {
+                            let existing = peers.get_mut(id).expect("DBUS store out of sync");
+                            trace!("Peer was already registered (from previous scan?) with name {:?} and dev addr: {:?}", existing.name, existing.dev_addr);
+                            // TODO(emilio): Consider not notifying? Kinda puts the burden of
+                            // preserving peer list to the parent.
+                            id
+                        } else {
+                            peers.insert(Peer {
+                                proxy,
+                                path: path.into(),
+                                name,
+                                dev_addr,
+                                groups: Vec::new(),
+                            })
+                        }
+                    };
 
                     session.listener.peer_discovered(&session, PeerId(handle));
                 }
@@ -755,17 +768,17 @@ impl Session {
                     let args = msg.args()?;
                     let props = args.properties();
                     trace!("Group started: {props:?}");
-                    let interface_path = match props.get("interface_object") {
+                    let iface_path = match props.get("interface_object") {
                         Some(&Value::ObjectPath(ref o)) => o.to_owned(),
                         other => {
                             error!("Expected an interface object path, got {other:?}");
                             continue;
                         }
                     };
-                    trace!("Current interface path is {interface_path:?}");
+                    trace!("Current interface path is {iface_path:?}");
                     let iface = wpa_supplicant::interface::InterfaceProxy::new(
                         &session.system_bus,
-                        interface_path,
+                        iface_path.clone(),
                     )
                     .await?;
                     trace!("Successfully created interface proxy");
@@ -808,6 +821,7 @@ impl Session {
                             let handle = groups.insert(Group {
                                 proxy: group,
                                 iface,
+                                iface_path: iface_path.into(),
                                 path: group_path.into(),
                                 iface_addr: go_iface_addr,
                                 iface_name,
@@ -1035,7 +1049,47 @@ impl Session {
                 while let Some(msg) = pd_pbc_req.next().await {
                     let args = msg.args()?;
                     let peer_object = args.peer_object();
-                    trace!("PD PBC Request: {peer_object}");
+                    trace!("PD PBC Request: {peer_object}, trying to authorize");
+
+                    let peer_dev_addr = {
+                        let peers = session.peers.read();
+                        let Some(peer) = peers.get_by_path(&peer_object) else {
+                            error!("Can't found {peer_object} in peers map");
+                            continue;
+                        };
+                        peer.dev_addr
+                    };
+
+
+                    let go_groups = {
+                        let mut go_groups = vec![];
+                        let groups = session.groups.read();
+                        for group in groups.iter() {
+                            go_groups.push(group.iface_path.clone());
+                        }
+                        go_groups
+                    };
+
+                    for group_iface_path in go_groups {
+                        let Ok(wps) = wpa_supplicant::wps::WPSProxy::new(
+                            &session.system_bus,
+                            &group_iface_path,
+                        ).await else {
+                            error!("Couldn't find WPS interface for group iface {:?}", group_iface_path);
+                            continue;
+                        };
+                        let mut params = HashMap::new();
+                        let dev_addr = Value::from(peer_dev_addr.as_bytes());
+                        let role = Value::from("registrar");
+                        let ty = Value::from(WPS_METHOD);
+                        params.insert("Role", &role);
+                        params.insert("P2PDeviceAddress", &dev_addr);
+                        params.insert("Type", &ty);
+                        if let Err(e) = wps.start(params).await {
+                            error!("Can't start wps authorization for {group_iface_path}: {e}");
+                            continue;
+                        }
+                    }
                 }
                 Ok(())
             },

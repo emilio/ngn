@@ -117,10 +117,10 @@ pub fn build(
                 }
                 Event::PeerConnected { id } | Event::PeerLost { id } => {
                     let mut i = 0;
-                    let classes = if matches!(event, Event::PeerConnected { .. }) {
-                        &["connected"]
-                    } else {
-                        &["disconnected"]
+                    let mut class_to_add = "connected";
+                    let mut class_to_remove = "disconnected";
+                    if matches!(event, Event::PeerLost { .. }) {
+                        std::mem::swap(&mut class_to_add, &mut class_to_remove);
                     };
                     loop {
                         let Some(row) = peer_list_box.row_at_index(i) else {
@@ -134,7 +134,8 @@ pub fn build(
                         };
 
                         if peer_id == id {
-                            peer_list_box.set_css_classes(classes);
+                            row.add_css_class(class_to_add);
+                            row.remove_css_class(class_to_remove);
                             break;
                         }
 
