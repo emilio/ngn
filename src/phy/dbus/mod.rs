@@ -401,7 +401,9 @@ impl Session {
             scope_id,
         );
         let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
-        send_message_to(&local_addr, &msg).await
+        utils::retry_timeout(Duration::from_secs(2), 5, || {
+            send_message_to(&local_addr, &msg)
+        }).await
     }
 
     async fn establish_control_channel(
@@ -578,6 +580,7 @@ impl Session {
             }
         };
 
+        let go_local_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
         let (control_listener, p2p_listener) = tokio::try_join!(
             TcpListener::bind(SocketAddrV6::new(
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
@@ -598,9 +601,8 @@ impl Session {
             p2p: p2p_listener.local_addr()?.port(),
         };
 
+        trace!(" > go = {is_go}, ports = {my_ports:?}, go_local_addr = {go_local_addr:?}");
         if !is_go {
-            trace!(" > not GO");
-            let go_local_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
             let control_message = ControlMessage::Associate {
                 dev_addr: session.dev_addr.into(),
                 ports: my_ports,
@@ -635,7 +637,6 @@ impl Session {
             return Ok(());
         }
 
-        trace!(" > we're GO");
         let mut peer_joined = proxy.receive_peer_joined().await?;
         let mut peer_left = proxy.receive_peer_disconnected().await?;
 
@@ -1295,9 +1296,11 @@ impl Session {
     }
 
     fn find_peer_id_by_dev_addr(&self, dev_addr: &MacAddr) -> Option<PeerId> {
+        trace!("find_peer_id_by_dev_addr({dev_addr})");
         // TODO(emilio): Make this non-linear.
         let peers = self.peers.read();
         for (id, peer) in peers.iter_with_handles() {
+            trace!(" {:?} -> {} ({})", id, peer.dev_addr, peer.name);
             if peer.dev_addr == *dev_addr {
                 return Some(PeerId(id));
             }
