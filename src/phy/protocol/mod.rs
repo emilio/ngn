@@ -104,6 +104,19 @@ impl DecodableMacAddr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeerAddress {
+    pub link_local_address: Ipv6Addr,
+    pub ports: P2pPorts,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PeerInfo {
+    pub name: String,
+    pub dev_addr: MacAddr,
+    pub local_address: PeerAddress,
+}
+
 /// Control messages defined for the IPv6-based protocol. Note this must be independent of the
 /// underlying platform (e.g. dbus vs. android).
 ///
@@ -119,4 +132,6 @@ pub enum ControlMessage {
         dev_addr: DecodableMacAddr,
         ports: P2pPorts,
     },
+    /// Sync the peer list.
+    SyncPeerList(Vec<PeerInfo>),
 }

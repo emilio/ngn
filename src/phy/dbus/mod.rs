@@ -16,6 +16,7 @@ use crate::{
 };
 
 use futures_lite::StreamExt;
+use handy::HandleMap;
 use log::{error, trace, warn};
 use macaddr::MacAddr;
 use parking_lot::RwLock;
@@ -38,24 +39,11 @@ const WPS_METHOD: &'static str = "pbc";
 
 #[derive(Debug)]
 struct Peer {
-    proxy: wpa_supplicant::peer::PeerProxy<'static>,
-    path: OwnedObjectPath,
+    /// Pretty name of of the peer.
     name: String,
-    groups: Vec<GroupId>,
     /// Device address of the device. Note this is _not_ usable to get a link-local address.
     dev_addr: MacAddr,
-}
-
-impl DbusPath for Peer {
-    fn path(&self) -> &OwnedObjectPath {
-        &self.path
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct PeerAddress {
-    link_local_address: Ipv6Addr,
-    ports: P2pPorts,
+    groups: Vec<GroupId>,
 }
 
 /// Per group association for a given peer.
@@ -115,7 +103,7 @@ pub struct Session {
     wpa_supplicant: WpaSupplicantProxy<'static>,
     p2pdevice: P2PDeviceProxy<'static>,
     go_intent: u32,
-    peers: RwLock<DbusStore<Peer>>,
+    peers: RwLock<HandleMap<Peer>>,
     groups: RwLock<DbusStore<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
     /// Task handle to our run loop. Canceled and awaited on drop.
@@ -378,12 +366,22 @@ impl Session {
             return None;
         };
         for (peer_id, info) in &group.peers {
-            if info.address.as_ref().is_some_and(|addr| addr.link_local_address == *address.ip()) {
+            if info
+                .address
+                .as_ref()
+                .is_some_and(|addr| addr.link_local_address == *address.ip())
+            {
                 return Some(*peer_id);
             }
         }
         error!("Address {address:?} couldn't be mapped to a known peer in the group!");
         return None;
+    }
+
+    async fn try_sync_peer_list(&self, group_id: GroupId, scope_id: u32, own_ports: P2pPorts) {
+        trace!("Session::try_sync_peer_list({group_id:?}, {scope_id}, {own_ports:?}");
+        let mut info = vec![];
+        // TODO
     }
 
     async fn send_control_message(
@@ -394,16 +392,28 @@ impl Session {
         message: ControlMessage,
     ) -> GenericResult<()> {
         trace!("Session::send_control_message({link_local_address:?}, {scope_id}, {message:?})");
+        let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
+        self.send_bin_control_message(link_local_address, control_port, scope_id, &msg)
+            .await
+    }
+
+    async fn send_bin_control_message(
+        &self,
+        link_local_address: Ipv6Addr,
+        control_port: u16,
+        scope_id: u32,
+        message: &[u8],
+    ) -> GenericResult<()> {
         let local_addr = SocketAddrV6::new(
             link_local_address,
             control_port,
             /* flowinfo = */ 0,
             scope_id,
         );
-        let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            send_message_to(&local_addr, &msg)
-        }).await
+            send_message_to(&local_addr, &mesage)
+        })
+        .await
     }
 
     async fn establish_control_channel(
@@ -446,6 +456,9 @@ impl Session {
                     }
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
+                        ControlMessage::SyncPeerList(peers) => {
+                            debug_assert!(!is_go, "This message shouldn't be sent to GOs");
+                        }
                         ControlMessage::Associate { dev_addr, ports } => {
                             let dev_addr = dev_addr.to_mac_addr();
                             let Some(peer_id) = session.find_peer_id_by_dev_addr(&dev_addr) else {
@@ -518,6 +531,11 @@ impl Session {
                                 session
                                     .listener
                                     .peer_joined_group(&session, group_id, peer_id);
+                            }
+                            if is_go {
+                                session
+                                    .try_sync_peer_list(group_id, scope_id, own_ports)
+                                    .await;
                             }
                         }
                     }
@@ -708,6 +726,9 @@ impl Session {
                     session
                         .listener
                         .peer_left_group(&session, group_id, peer_id);
+                    session
+                        .try_sync_peer_list(group_id, scope_id, own_ports)
+                        .await;
                 }
                 Ok(())
             },
@@ -834,8 +855,6 @@ impl Session {
                             id
                         } else {
                             peers.insert(Peer {
-                                proxy,
-                                path: path.into(),
                                 name,
                                 dev_addr,
                                 groups: Vec::new(),
