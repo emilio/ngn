@@ -1,6 +1,8 @@
 // This class is a proxy between the Rust side P2PSession and the native WifiP2PManager.
 // @see https://developer.android.com/reference/android/net/wifi/p2p/WifiP2pManager
 
+package io.crisal.ngn;
+
 import android.Manifest;
 import android.content.Context;
 import android.net.MacAddress;

@@ -29,3 +29,5 @@ dependencyResolutionManagement {
 rootProject.name = "ngn"
 include("lib")
 project(":lib").projectDir = file("src/phy/android")
+include("app")
+project(":app").projectDir = file("examples/android")
