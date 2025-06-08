@@ -7,6 +7,7 @@
 
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 use handy::HandleMap;
+use jni_sys::jlong;
 
 use crate::{
     phy::protocol::{ControlMessage, P2pPorts},
@@ -84,9 +85,9 @@ const GO_CONTROL_PORT: u16 = 9001;
 /// Global state for a P2P session.
 #[derive(Debug)]
 pub struct Session {
+    vm: jni::JavaVM,
     proxy: jni::objects::GlobalRef,
     p2pmanager: jni::objects::GlobalRef,
-    p2pchannel: jni::objects::GlobalRef,
     go_intent: u32,
     peers: RwLock<HandleMap<Peer>>,
     groups: RwLock<HandleMap<Group>>,
@@ -106,18 +107,19 @@ impl Drop for Session {
 }
 
 pub struct SessionInit<'a> {
+    /// JNI VM to be able to do java calls. TODO(emilio): JNI usage can most definitely be
+    /// optimized.
+    pub vm: jni::JavaVM,
     /// Proxy object. Must be an NgnSessionProxy java object.
     pub proxy: jni::objects::GlobalRef,
     /// The WifiP2PManager object. Technically the proxy keeps it alive and could return it to us,
     /// but it's just more convenient to have it around.
     pub p2pmanager: jni::objects::GlobalRef,
-    /// The WifiP2PManager.Channel object. Same as above.
-    pub p2pchannel: jni::objects::GlobalRef,
     /// Device address for our p2p operations.
     pub p2p_dev_address: MacAddr,
     /// Our group owner intent, from 0 to 15.
     pub go_intent: u32,
-    pub phantom: std::marker::PhantomData<&'a ()>,
+    pub _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 async fn send_message_to(addr: &SocketAddrV6, message: &[u8]) -> GenericResult<()> {
@@ -144,9 +146,9 @@ impl P2PSession for Session {
         let session = Arc::new(Self {
             peers: Default::default(),
             groups: Default::default(),
+            vm: init.vm,
             proxy: init.proxy,
             p2pmanager: init.p2pmanager,
-            p2pchannel: init.p2pchannel,
             dev_addr: init.p2p_dev_address,
             go_intent: init.go_intent,
             listener,
@@ -181,10 +183,13 @@ impl P2PSession for Session {
 
     async fn discover_peers(&self) -> GenericResult<()> {
         trace!("Session::discover_peers");
-        // TODO: call
-        // https://developer.android.com/reference/android/net/wifi/p2p/WifiP2pManager#discoverPeers(android.net.wifi.p2p.WifiP2pManager.Channel,%20android.net.wifi.p2p.WifiP2pManager.ActionListener)
-        todo!();
-        Ok(())
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        {
+            let mut env = self.vm.attach_current_thread()?;
+            let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
+            env.call_method(self.proxy.as_obj(), "(J)V", "discoverPeers", &[tx_long.into()])?;
+        }
+        rx.await?
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
@@ -193,8 +198,21 @@ impl P2PSession for Session {
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
         trace!("Session::connect_to_peer({id:?})");
-        todo!();
-        Ok(())
+        let device_address = {
+            let peers = self.peers.read();
+            let Some(peer) = peers.get(id.0) else {
+                return Err(trivial_error!("Couldn't find peer id"));
+            };
+            peer.dev_addr.clone()
+        };
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        {
+            let mut env = self.vm.attach_current_thread()?;
+            let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
+            let peer_address = env.new_string(device_address.to_string())?;
+            env.call_method(self.proxy.as_obj(), "(Ljava/lang/String;J)V", "connectToPeer", &[(&peer_address).into(), tx_long.into()])?;
+        }
+        rx.await?
     }
 
     async fn message_peer(&self, id: PeerId, message: &[u8]) -> GenericResult<()> {

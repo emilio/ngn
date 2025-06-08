@@ -26,6 +26,8 @@ bincode_derive = "2"
 # Networking and low-level utilities.
 macaddr = "1"
 libc = "0.2"
+jni = "0.21"
+jni-sys = "0.3"
 # UI toolkit
 gtk = { version = "0.9.6", package = "gtk4", features = ["v4_18"] }
 adw = { version = "0.7.2", package = "libadwaita" }

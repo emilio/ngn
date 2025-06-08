@@ -1,6 +1,7 @@
 //! Main interface for P2P physical groups.
 
 pub mod dbus;
+pub mod android;
 mod protocol;
 
 use log::trace;

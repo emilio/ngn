@@ -1,8 +1,16 @@
+# Ignore cargo target dir
 /target
 
+# Ignore Gradle project-specific cache directory
+.gradle
 
-# Added by cargo
-#
-# already existing elements were commented out
+# Ignore Gradle build output directory
+build
 
-#/target
+# Ignore lsp stuff
+kls_database.db
+# Android Studio stuff and overrides.
+.project
+.settings/
+.idea/
+local.properties
