@@ -7,6 +7,9 @@
 # Ignore Gradle build output directory
 build
 
+# Ignore Cargo local configuration
+.cargo
+
 # Ignore lsp stuff
 kls_database.db
 # Android Studio stuff and overrides.

@@ -11,7 +11,10 @@ pub mod wpa_supplicant;
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 
 use crate::{
-    phy::protocol::{ControlMessage, P2pPorts},
+    phy::protocol::{
+        ControlMessage, GroupInfo, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity, PeerInfo,
+        PeerOwnIdentifier, GO_CONTROL_PORT,
+    },
     utils::{self, trivial_error},
 };
 
@@ -37,37 +40,21 @@ use zbus::zvariant::{OwnedObjectPath, Value};
 const WPS_METHOD: &'static str = "pbc";
 
 #[derive(Debug)]
-struct Peer {
+struct DbusPeerData {
     proxy: wpa_supplicant::peer::PeerProxy<'static>,
     path: OwnedObjectPath,
-    name: String,
-    groups: Vec<GroupId>,
-    /// Device address of the device. Note this is _not_ usable to get a link-local address.
-    dev_addr: MacAddr,
 }
+
+type Peer = PeerInfo<DbusPeerData>;
 
 impl DbusPath for Peer {
     fn path(&self) -> &OwnedObjectPath {
-        &self.path
+        &self.data.path
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct PeerAddress {
-    link_local_address: Ipv6Addr,
-    ports: P2pPorts,
-}
-
-/// Per group association for a given peer.
-#[derive(Debug, Default)]
-struct PeerGroupInfo {
-    /// The link-local address of this peer, and the ports it uses to listen to connections, if
-    /// known.
-    address: Option<PeerAddress>,
-}
-
 #[derive(Debug)]
-struct Group {
+struct DbusGroupData {
     /// Proxy to the group object.
     proxy: wpa_supplicant::group::GroupProxy<'static>,
     /// Proxy to the interface object that connects the nodes in this group.
@@ -76,37 +63,15 @@ struct Group {
     iface_path: OwnedObjectPath,
     /// Path of the group.
     path: OwnedObjectPath,
-    /// Mac address of the interface, useful to get a local link address for a group owner.
-    go_iface_addr: MacAddr,
-    /// Name of the interface.
-    iface_name: String,
-    /// Scope id of the interface. This can be derived by the name via if_nametoindex.
-    scope_id: u32,
-    /// Whether we're the group owner.
-    is_go: bool,
-    /// The current peers we have. Only around if we're a GO
-    ///
-    /// TODO(emilio): Broadcast these to non-GO members?
-    peers: HashMap<PeerId, PeerGroupInfo>,
-    /// Task handle to our connection loop. Canceled and awaited on drop.
-    group_task: OnceLock<JoinHandle<GenericResult<()>>>,
 }
 
-impl Drop for Group {
-    fn drop(&mut self) {
-        if let Some(task) = self.group_task.take() {
-            task.abort();
-        }
-    }
-}
+type Group = GroupInfo<DbusGroupData>;
 
 impl DbusPath for Group {
     fn path(&self) -> &OwnedObjectPath {
-        &self.path
+        &self.data.path
     }
 }
-
-const GO_CONTROL_PORT: u16 = 9001;
 
 /// Global state for a P2P session.
 #[derive(Debug)]
@@ -297,7 +262,7 @@ P2PDevice::device_address()"
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().get(id.0)?.name.to_owned())
+        Some(self.peers.read().get(id.0)?.identity.name.to_owned())
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
@@ -305,7 +270,7 @@ P2PDevice::device_address()"
         let peer_path = {
             let guard = self.peers.read();
             match guard.get(id.0) {
-                Some(p) => p.path.to_owned(),
+                Some(p) => p.data.path.to_owned(),
                 None => return Err(trivial_error!("Can't locate peer")),
             }
         };
@@ -350,6 +315,12 @@ P2PDevice::device_address()"
 }
 
 impl Session {
+    fn own_identifier(&self) -> PeerOwnIdentifier {
+        // TODO(emilio): Consider switching dbus to name-based association if dev address is not
+        // available.
+        PeerOwnIdentifier::DevAddr(self.dev_addr.into())
+    }
+
     pub fn system_bus(&self) -> &zbus::Connection {
         &self.system_bus
     }
@@ -378,7 +349,11 @@ impl Session {
             return None;
         };
         for (peer_id, info) in &group.peers {
-            if info.address.as_ref().is_some_and(|addr| addr.link_local_address == *address.ip()) {
+            if info
+                .address
+                .as_ref()
+                .is_some_and(|addr| addr.link_local_address == *address.ip())
+            {
                 return Some(*peer_id);
             }
         }
@@ -403,7 +378,8 @@ impl Session {
         let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
         utils::retry_timeout(Duration::from_secs(2), 5, || {
             send_message_to(&local_addr, &msg)
-        }).await
+        })
+        .await
     }
 
     async fn establish_control_channel(
@@ -446,10 +422,9 @@ impl Session {
                     }
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
-                        ControlMessage::Associate { dev_addr, ports } => {
-                            let dev_addr = dev_addr.to_mac_addr();
-                            let Some(peer_id) = session.find_peer_id_by_dev_addr(&dev_addr) else {
-                                error!("Couldn't associate with {dev_addr:?}");
+                        ControlMessage::Associate { id, ports } => {
+                            let Some(peer_id) = session.find_peer_id_by_own_id(&id) else {
+                                error!("Couldn't associate with {id:?}");
                                 continue;
                             };
                             let link_local_address = match address.ip() {
@@ -502,7 +477,7 @@ impl Session {
                                         ports.control,
                                         scope_id,
                                         ControlMessage::Associate {
-                                            dev_addr: session.dev_addr.into(),
+                                            id: session.own_identifier(),
                                             ports: own_ports,
                                         },
                                     )
@@ -573,7 +548,7 @@ impl Session {
         trace!("Session::group_task({group_id:?})");
 
         let (is_go, go_iface_addr, scope_id, proxy) = match session.groups.read().get(group_id.0) {
-            Some(g) => (g.is_go, g.go_iface_addr, g.scope_id, g.proxy.clone()),
+            Some(g) => (g.is_go, g.go_iface_addr, g.scope_id, g.data.proxy.clone()),
             None => {
                 error!("Didn't find {group_id:?} on group_task start!");
                 return Err(trivial_error!("Didn't find group on group_task start!"));
@@ -604,7 +579,7 @@ impl Session {
         trace!(" > go = {is_go}, ports = {my_ports:?}, go_local_addr = {go_local_addr:?}");
         if !is_go {
             let control_message = ControlMessage::Associate {
-                dev_addr: session.dev_addr.into(),
+                id: session.own_identifier(),
                 ports: my_ports,
             };
             tokio::try_join!(
@@ -824,21 +799,24 @@ impl Session {
                         continue;
                     };
 
+                    let identity = PeerIdentity { name, dev_addr };
+
                     let handle = {
                         let mut peers = session.peers.write();
                         if let Some(id) = peers.id_by_path(&path) {
                             let existing = peers.get_mut(id).expect("DBUS store out of sync");
-                            trace!("Peer was already registered (from previous scan?) with name {:?} and dev addr: {:?}", existing.name, existing.dev_addr);
+                            trace!("Peer was already registered (from previous scan?) with identity {:?}", existing.identity);
                             // TODO(emilio): Consider not notifying? Kinda puts the burden of
                             // preserving peer list to the parent.
                             id
                         } else {
                             peers.insert(Peer {
-                                proxy,
-                                path: path.into(),
-                                name,
-                                dev_addr,
+                                identity,
                                 groups: Vec::new(),
+                                data: DbusPeerData {
+                                    proxy,
+                                    path: path.into(),
+                                },
                             })
                         }
                     };
@@ -976,17 +954,20 @@ impl Session {
                     let is_go = props.get("role") == Some(&Value::from("GO"));
                     let id = {
                         let mut groups = session.groups.write();
-                        let handle = groups.insert(Group {
+                        let data = DbusGroupData {
                             proxy: group,
                             iface,
                             iface_path: iface_path.into(),
                             path: group_path.into(),
+                        };
+                        let handle = groups.insert(Group {
                             go_iface_addr,
                             iface_name,
                             scope_id,
                             is_go,
                             peers: Default::default(),
                             group_task: OnceLock::new(),
+                            data,
                         });
                         let id = GroupId(handle);
                         groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
@@ -1222,14 +1203,14 @@ impl Session {
                             error!("Can't found {peer_object} in peers map");
                             continue;
                         };
-                        peer.dev_addr
+                        peer.identity.dev_addr
                     };
 
                     let go_groups = {
                         let mut go_groups = vec![];
                         let groups = session.groups.read();
                         for group in groups.iter() {
-                            go_groups.push(group.iface_path.clone());
+                            go_groups.push(group.data.iface_path.clone());
                         }
                         go_groups
                     };
@@ -1295,13 +1276,13 @@ impl Session {
         Ok(())
     }
 
-    fn find_peer_id_by_dev_addr(&self, dev_addr: &MacAddr) -> Option<PeerId> {
-        trace!("find_peer_id_by_dev_addr({dev_addr})");
-        // TODO(emilio): Make this non-linear.
+    fn find_peer_id_by_own_id(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
+        trace!("find_peer_id_by_dev_addr({own_id:?})");
+        // TODO(emilio): Make this non-linear?
         let peers = self.peers.read();
         for (id, peer) in peers.iter_with_handles() {
-            trace!(" {:?} -> {} ({})", id, peer.dev_addr, peer.name);
-            if peer.dev_addr == *dev_addr {
+            trace!(" {:?} -> {:?}", id, peer.identity);
+            if peer.identity.matches(own_id) {
                 return Some(PeerId(id));
             }
         }

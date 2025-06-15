@@ -54,7 +54,7 @@ class ActionListenerWrapper implements WifiP2pManager.ActionListener {
 public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager.ChannelListener, WifiP2pManager.GroupInfoListener, WifiP2pManager.ConnectionInfoListener, WifiP2pManager.PeerListListener, WifiP2pManager.DeviceInfoListener {
     public static String TAG = "NgnSessionProxy";
 
-    private static native long ngn_session_init(NgnSessionProxy session, String deviceAddress);
+    private static native long ngn_session_init(NgnSessionProxy session, String name);
     private static native long ngn_init();
 
     // BroadcastReceiver
@@ -123,7 +123,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     public void onDeviceInfoAvailable(@Nullable WifiP2pDevice wifiP2pDevice) {
         Log.d(TAG, "onDeviceInfoAvailable: " + wifiP2pDevice);
         if (wifiP2pDevice != null) {
-            m_native = ngn_session_init(this, wifiP2pDevice.deviceAddress);
+            m_native = ngn_session_init(this, wifiP2pDevice.deviceName);
             Log.d(TAG, "onDeviceInfoAvailable got session: " + m_native);
         }
     }

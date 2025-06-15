@@ -1,14 +1,21 @@
 package io.crisal.ngndemo
 
 
+import android.Manifest
 import android.annotation.SuppressLint
-import io.crisal.ngn.NgnSessionProxy
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pManager
+import android.net.wifi.p2p.WifiP2pManager.GroupInfoListener
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresPermission
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -17,7 +24,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import io.crisal.ngn.NgnSessionProxy
 import io.crisal.ngndemo.ui.theme.NgnDemoTheme
+
 
 val REQUIRED_PERMISSIONS = arrayOf(
     android.Manifest.permission.ACCESS_WIFI_STATE,
@@ -26,6 +37,12 @@ val REQUIRED_PERMISSIONS = arrayOf(
     android.Manifest.permission.ACCESS_FINE_LOCATION,
     android.Manifest.permission.ACCESS_COARSE_LOCATION,
 );
+
+fun hasAllRequiredPermissions(context: Context): Boolean {
+    return REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+}
 
 class MainActivity : ComponentActivity() {
     private val m_proxy = NgnSessionProxy(this);
@@ -57,17 +74,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
+        if (hasAllRequiredPermissions(this)) {
+            m_proxy.init();
+        }
+
         setContent {
             NgnDemoTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                    Button(onClick = {
-                        m_permissionRequest.launch(REQUIRED_PERMISSIONS);
-                    }) {
-                        Text("Request permissions")
+                    if (!hasAllRequiredPermissions(this)) {
+                        Button(onClick = {
+                            m_permissionRequest.launch(REQUIRED_PERMISSIONS);
+                        }, modifier = Modifier.padding(innerPadding)) {
+                            Text("Request permissions")
+                        }
                     }
                 }
             }

@@ -14,13 +14,15 @@ use jni::{
 use jni_sys::jlong;
 
 use crate::{
-    phy::protocol::{ControlMessage, P2pPorts},
+    phy::protocol::{
+        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerOwnIdentifier,
+        GO_CONTROL_PORT,
+    },
     utils::{self, trivial_error},
 };
 
 use futures_lite::StreamExt;
 use log::{error, trace, warn};
-use macaddr::MacAddr;
 use parking_lot::RwLock;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -49,54 +51,12 @@ fn rt() -> &'static tokio::runtime::Runtime {
 }
 
 #[derive(Debug)]
-struct Peer {
-    name: String,
-    groups: Vec<GroupId>,
-    /// Device address of the device. Note this is _not_ usable to get a link-local address.
-    dev_addr: MacAddr,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct PeerAddress {
-    link_local_address: Ipv6Addr,
-    ports: P2pPorts,
-}
-
-/// Per group association for a given peer.
-#[derive(Debug, Default)]
-struct PeerGroupInfo {
-    /// The link-local address of this peer, and the ports it uses to listen to connections, if
-    /// known.
-    address: Option<PeerAddress>,
-}
+struct AndroidPeerData;
+type Peer = protocol::PeerInfo<AndroidPeerData>;
 
 #[derive(Debug)]
-struct Group {
-    /// Mac address of the interface, useful to get a local link address for a group owner.
-    go_iface_addr: MacAddr,
-    /// Name of the interface.
-    iface_name: String,
-    /// Scope id of the interface. This can be derived by the name via if_nametoindex.
-    scope_id: u32,
-    /// Whether we're the group owner.
-    is_go: bool,
-    /// The current peers we have. Only around if we're a GO
-    ///
-    /// TODO(emilio): Broadcast these to non-GO members?
-    peers: HashMap<PeerId, PeerGroupInfo>,
-    /// Task handle to our connection loop. Canceled and awaited on drop.
-    group_task: OnceLock<JoinHandle<GenericResult<()>>>,
-}
-
-impl Drop for Group {
-    fn drop(&mut self) {
-        if let Some(task) = self.group_task.take() {
-            task.abort();
-        }
-    }
-}
-
-const GO_CONTROL_PORT: u16 = 9001;
+struct AndroidGroupData;
+type Group = protocol::GroupInfo<AndroidGroupData>;
 
 /// Global state for a P2P session.
 #[derive(Debug)]
@@ -109,8 +69,9 @@ pub struct Session {
     listener: Arc<dyn P2PSessionListener<Self>>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
-    /// Our own P2P device address.
-    dev_addr: MacAddr,
+    /// The name we expose to our P2P peers. We store it instead of the device address because the
+    /// P2P device address is not exposed to non-privileged apps.
+    name: String,
 }
 
 impl Drop for Session {
@@ -127,8 +88,8 @@ pub struct SessionInit<'a> {
     pub vm: JavaVM,
     /// Proxy object. Must be an NgnSessionProxy java object.
     pub proxy: GlobalRef,
-    /// Device address for our p2p operations.
-    pub p2p_dev_address: MacAddr,
+    /// Name for our P2P operations.
+    pub p2p_name: String,
     /// Our group owner intent, from 0 to 15.
     pub go_intent: u32,
     pub _phantom: std::marker::PhantomData<&'a ()>,
@@ -194,7 +155,7 @@ impl P2PSession for Session {
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().get(id.0)?.name.to_owned())
+        Some(self.peers.read().get(id.0)?.identity.name.to_owned())
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
@@ -204,7 +165,7 @@ impl P2PSession for Session {
             let Some(peer) = peers.get(id.0) else {
                 return Err(trivial_error!("Couldn't find peer id"));
             };
-            peer.dev_addr.clone()
+            peer.identity.dev_addr.clone()
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
@@ -258,15 +219,19 @@ impl P2PSession for Session {
 }
 
 impl Session {
+    fn own_identity(&self) -> PeerOwnIdentifier {
+        PeerOwnIdentifier::Name(self.name.clone())
+    }
+
     fn new_sync(init: SessionInit<'_>, listener: Arc<dyn P2PSessionListener<Self>>) -> Arc<Self> {
         let session = Arc::new(Self {
             peers: Default::default(),
             groups: Default::default(),
             vm: init.vm,
             proxy: init.proxy,
-            dev_addr: init.p2p_dev_address,
             go_intent: init.go_intent,
             listener,
+            name: init.p2p_name,
             run_loop_task: RwLock::new(None),
         });
 
@@ -365,10 +330,9 @@ impl Session {
                     }
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
-                        ControlMessage::Associate { dev_addr, ports } => {
-                            let dev_addr = dev_addr.to_mac_addr();
-                            let Some(peer_id) = session.find_peer_id_by_dev_addr(&dev_addr) else {
-                                error!("Couldn't associate with {dev_addr:?}");
+                        ControlMessage::Associate { id, ports } => {
+                            let Some(peer_id) = session.find_peer_id_by_own_addr(&id) else {
+                                error!("Couldn't associate with {id:?}");
                                 continue;
                             };
                             let link_local_address = match address.ip() {
@@ -421,7 +385,7 @@ impl Session {
                                         ports.control,
                                         scope_id,
                                         ControlMessage::Associate {
-                                            dev_addr: session.dev_addr.into(),
+                                            id: session.own_identity(),
                                             ports: own_ports,
                                         },
                                     )
@@ -523,7 +487,7 @@ impl Session {
         trace!(" > go = {is_go}, ports = {my_ports:?}, go_local_addr = {go_local_addr:?}");
         if !is_go {
             let control_message = ControlMessage::Associate {
-                dev_addr: session.dev_addr.into(),
+                id: session.own_identity(),
                 ports: my_ports,
             };
             tokio::try_join!(
@@ -575,13 +539,13 @@ impl Session {
         todo!();
     }
 
-    fn find_peer_id_by_dev_addr(&self, dev_addr: &MacAddr) -> Option<PeerId> {
-        trace!("find_peer_id_by_dev_addr({dev_addr})");
+    fn find_peer_id_by_own_addr(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
+        trace!("find_peer_id_by_dev_addr({own_id:?})");
         // TODO(emilio): Make this non-linear.
         let peers = self.peers.read();
         for (id, peer) in peers.iter_with_handles() {
-            trace!(" {:?} -> {} ({})", id, peer.dev_addr, peer.name);
-            if peer.dev_addr == *dev_addr {
+            trace!(" {:?} -> {:?}", id, peer.identity);
+            if peer.identity.matches(own_id) {
                 return Some(PeerId(id));
             }
         }
@@ -591,17 +555,17 @@ impl Session {
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
     extern "C" fn init<'l>(
         mut env: JNIEnv<'l>,
-        class: JClass<'l>,
+        _class: JClass<'l>,
         owner: JObject<'l>,
-        device_address: JString<'l>,
+        name: JString<'l>,
     ) -> jlong {
-        let dev_address = env.get_string(&device_address).unwrap();
-        let dev_address = dev_address.to_string_lossy();
-        trace!("Session::init({dev_address:?})");
+        let name = env.get_string(&name).unwrap();
+        let name = name.to_string_lossy();
+        trace!("Session::init({name:?})");
         let init = SessionInit {
             vm: env.get_java_vm().unwrap(),
             proxy: env.new_global_ref(owner).unwrap(),
-            p2p_dev_address: MacAddr::from_str(&dev_address).unwrap(),
+            p2p_name: name.into(),
             go_intent: 14,
             _phantom: std::marker::PhantomData,
         };
@@ -616,6 +580,8 @@ impl Session {
 extern "C" fn ngn_init<'l>(_: JNIEnv<'l>) {
     trace!("ngn_init()\n");
     // Initialize our logging and panic hooks.
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Trace));
+    android_logger::init_once(
+        android_logger::Config::default().with_max_level(log::LevelFilter::Trace),
+    );
     log_panics::init();
 }
