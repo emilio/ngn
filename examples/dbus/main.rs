@@ -7,7 +7,6 @@ use adw::prelude::*;
 use gtk::gdk::Display;
 use ngn::phy::P2PSession;
 use std::{
-    borrow::Cow,
     io::Write,
     sync::{Arc, OnceLock},
 };

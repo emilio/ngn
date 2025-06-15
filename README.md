@@ -228,3 +228,13 @@ Gotchas:
  * Get some Android back-end prototype code working.
  * Get some basic android app working, maybe even interacting with Linux.
  * Nice to have: Better GO IP provisioning, do not rely on hwaddr.
+
+# Android development and such
+
+ * A single jni app is very easy, but getting library / project setup to work correctly was a lot of guesswork.
+ * Getting Rust JNI lib correctly was also a bit of a pain. ./gradlew cargoBuild --debug helps
+ * Getting editor integration requires local config like a .cargo/config.toml file with:
+      [build]
+      target = "x86_64-linux-android"
+  (or so)
+ * Getting panic backtraces is not easy (stripped bins? can't look into it r/n)

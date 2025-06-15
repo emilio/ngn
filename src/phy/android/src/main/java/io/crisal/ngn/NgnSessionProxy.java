@@ -55,7 +55,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     public static String TAG = "NgnSessionProxy";
 
     private static native long ngn_session_init(NgnSessionProxy session, String deviceAddress);
-    private static native long ngn_session_check();
+    private static native long ngn_init();
 
     // BroadcastReceiver
     @Override
@@ -123,7 +123,8 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     public void onDeviceInfoAvailable(@Nullable WifiP2pDevice wifiP2pDevice) {
         Log.d(TAG, "onDeviceInfoAvailable: " + wifiP2pDevice);
         if (wifiP2pDevice != null) {
-            m_native = ngn_session_init(NgnSessionProxy.this, wifiP2pDevice.deviceAddress);
+            m_native = ngn_session_init(this, wifiP2pDevice.deviceAddress);
+            Log.d(TAG, "onDeviceInfoAvailable got session: " + m_native);
         }
     }
 
@@ -132,7 +133,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     }
 
     public NgnSessionProxy(Context aContext) {
-        ngn_session_check();
+        ngn_init();
         m_context = aContext;
         m_intentFilter = new IntentFilter();
         m_intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);

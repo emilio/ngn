@@ -7,6 +7,10 @@
 
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 use handy::HandleMap;
+use jni::{
+    objects::{GlobalRef, JClass, JObject, JString},
+    JNIEnv, JavaVM,
+};
 use jni_sys::jlong;
 
 use crate::{
@@ -21,6 +25,7 @@ use parking_lot::RwLock;
 use std::{
     collections::{hash_map::Entry, HashMap},
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
+    str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -31,6 +36,17 @@ use tokio::{
 };
 
 const WPS_METHOD: &'static str = "pbc";
+
+// TODO: Probably should allow to get an external runtime or so.
+fn rt() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    })
+}
 
 #[derive(Debug)]
 struct Peer {
@@ -85,9 +101,8 @@ const GO_CONTROL_PORT: u16 = 9001;
 /// Global state for a P2P session.
 #[derive(Debug)]
 pub struct Session {
-    vm: jni::JavaVM,
-    proxy: jni::objects::GlobalRef,
-    p2pmanager: jni::objects::GlobalRef,
+    vm: JavaVM,
+    proxy: GlobalRef,
     go_intent: u32,
     peers: RwLock<HandleMap<Peer>>,
     groups: RwLock<HandleMap<Group>>,
@@ -109,12 +124,9 @@ impl Drop for Session {
 pub struct SessionInit<'a> {
     /// JNI VM to be able to do java calls. TODO(emilio): JNI usage can most definitely be
     /// optimized.
-    pub vm: jni::JavaVM,
+    pub vm: JavaVM,
     /// Proxy object. Must be an NgnSessionProxy java object.
-    pub proxy: jni::objects::GlobalRef,
-    /// The WifiP2PManager object. Technically the proxy keeps it alive and could return it to us,
-    /// but it's just more convenient to have it around.
-    pub p2pmanager: jni::objects::GlobalRef,
+    pub proxy: GlobalRef,
     /// Device address for our p2p operations.
     pub p2p_dev_address: MacAddr,
     /// Our group owner intent, from 0 to 15.
@@ -142,23 +154,7 @@ impl P2PSession for Session {
         init: SessionInit<'_>,
         listener: Arc<dyn P2PSessionListener<Self>>,
     ) -> GenericResult<Arc<Self>> {
-        trace!("Successfully initialized P2P session");
-        let session = Arc::new(Self {
-            peers: Default::default(),
-            groups: Default::default(),
-            vm: init.vm,
-            proxy: init.proxy,
-            p2pmanager: init.p2pmanager,
-            dev_addr: init.p2p_dev_address,
-            go_intent: init.go_intent,
-            listener,
-            run_loop_task: RwLock::new(None),
-        });
-
-        let handle = tokio::spawn(Session::run_loop(Arc::clone(&session)));
-        *session.run_loop_task.write() = Some(handle);
-
-        Ok(session)
+        Ok(Self::new_sync(init, listener))
     }
 
     async fn wait(&self) -> GenericResult<()> {
@@ -187,7 +183,12 @@ impl P2PSession for Session {
         {
             let mut env = self.vm.attach_current_thread()?;
             let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
-            env.call_method(self.proxy.as_obj(), "(J)V", "discoverPeers", &[tx_long.into()])?;
+            env.call_method(
+                self.proxy.as_obj(),
+                "(J)V",
+                "discoverPeers",
+                &[tx_long.into()],
+            )?;
         }
         rx.await?
     }
@@ -210,7 +211,12 @@ impl P2PSession for Session {
             let mut env = self.vm.attach_current_thread()?;
             let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
             let peer_address = env.new_string(device_address.to_string())?;
-            env.call_method(self.proxy.as_obj(), "(Ljava/lang/String;J)V", "connectToPeer", &[(&peer_address).into(), tx_long.into()])?;
+            env.call_method(
+                self.proxy.as_obj(),
+                "(Ljava/lang/String;J)V",
+                "connectToPeer",
+                &[(&peer_address).into(), tx_long.into()],
+            )?;
         }
         rx.await?
     }
@@ -252,6 +258,24 @@ impl P2PSession for Session {
 }
 
 impl Session {
+    fn new_sync(init: SessionInit<'_>, listener: Arc<dyn P2PSessionListener<Self>>) -> Arc<Self> {
+        let session = Arc::new(Self {
+            peers: Default::default(),
+            groups: Default::default(),
+            vm: init.vm,
+            proxy: init.proxy,
+            dev_addr: init.p2p_dev_address,
+            go_intent: init.go_intent,
+            listener,
+            run_loop_task: RwLock::new(None),
+        });
+
+        let handle = rt().spawn(Session::run_loop(Arc::clone(&session)));
+        *session.run_loop_task.write() = Some(handle);
+
+        session
+    }
+
     fn peer_id_from_address(&self, group_id: GroupId, address: &SocketAddr) -> Option<PeerId> {
         let address = match address {
             SocketAddr::V4(ref addr) => {
@@ -563,4 +587,35 @@ impl Session {
         }
         None
     }
+
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
+    extern "C" fn init<'l>(
+        mut env: JNIEnv<'l>,
+        class: JClass<'l>,
+        owner: JObject<'l>,
+        device_address: JString<'l>,
+    ) -> jlong {
+        let dev_address = env.get_string(&device_address).unwrap();
+        let dev_address = dev_address.to_string_lossy();
+        trace!("Session::init({dev_address:?})");
+        let init = SessionInit {
+            vm: env.get_java_vm().unwrap(),
+            proxy: env.new_global_ref(owner).unwrap(),
+            p2p_dev_address: MacAddr::from_str(&dev_address).unwrap(),
+            go_intent: 14,
+            _phantom: std::marker::PhantomData,
+        };
+
+        // TODO(emilio): Need a listener that proxies to `NgnSessionProxy`.
+        let session = Self::new_sync(init, Arc::new(super::LoggerListener::default()));
+        Arc::into_raw(session) as jlong
+    }
+}
+
+#[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1init"]
+extern "C" fn ngn_init<'l>(_: JNIEnv<'l>) {
+    trace!("ngn_init()\n");
+    // Initialize our logging and panic hooks.
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Trace));
+    log_panics::init();
 }
