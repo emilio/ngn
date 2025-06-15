@@ -15,8 +15,7 @@ use jni_sys::jlong;
 
 use crate::{
     phy::protocol::{
-        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerOwnIdentifier,
-        GO_CONTROL_PORT,
+        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity, PeerOwnIdentifier, GO_CONTROL_PORT
     },
     utils::{self, trivial_error},
 };
@@ -31,7 +30,7 @@ use std::{
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc, task::JoinHandle};
 use tokio::{
     self, io,
     net::{TcpListener, TcpStream},
@@ -48,6 +47,15 @@ fn rt() -> &'static tokio::runtime::Runtime {
             .build()
             .unwrap()
     })
+}
+
+/// Representation of system messages that we need to handle
+enum JavaNotification {
+    FindStopped,
+    DeviceFound(PeerIdentity),
+    DeviceLost(PeerIdentity),
+    // InvitationReceived,
+    // InvitationResult,
 }
 
 #[derive(Debug)]
@@ -67,6 +75,7 @@ pub struct Session {
     peers: RwLock<HandleMap<Peer>>,
     groups: RwLock<HandleMap<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
+    java_notification: mpsc::Sender<JavaNotification>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
     /// The name we expose to our P2P peers. We store it instead of the device address because the
@@ -536,6 +545,7 @@ impl Session {
     }
 
     async fn run_loop(session: Arc<Self>) -> GenericResult<()> {
+        trace!("Session::run_loop");
         todo!();
     }
 
