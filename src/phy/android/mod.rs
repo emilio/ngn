@@ -11,7 +11,7 @@ use jni::{
     objects::{GlobalRef, JClass, JObject, JObjectArray, JString},
     JNIEnv, JavaVM,
 };
-use jni_sys::jlong;
+use jni_sys::{jboolean, jlong};
 
 use crate::{
     phy::protocol::{
@@ -60,9 +60,9 @@ enum JavaNotification {
     // InvitationResult,
     // WpsFailed,
     GroupStarted {
-        go_iface_addr: MacAddr,
         iface_name: String,
         is_go: bool,
+        go_ip_address: IpAddr,
     },
     // TODO: We're going to need some sort of identifier here.
     // GroupFinished(..),
@@ -126,17 +126,6 @@ pub struct SessionInit<'a> {
     /// Our group owner intent, from 0 to 15.
     pub go_intent: u32,
     pub _phantom: std::marker::PhantomData<&'a ()>,
-}
-
-async fn send_message_to(addr: &SocketAddrV6, message: &[u8]) -> GenericResult<()> {
-    trace!("send_message_to({addr:?}, {})", message.len());
-    let mut stream =
-        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
-            Ok(stream) => stream,
-            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
-        };
-    super::protocol::write_binary_message(&mut stream, message).await?;
-    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -238,14 +227,9 @@ impl P2PSession for Session {
             };
             (address, group.scope_id)
         };
-        let socket_addr = SocketAddrV6::new(
-            peer_address.link_local_address,
-            peer_address.ports.p2p,
-            /* flowinfo = */ 0,
-            scope_id,
-        );
+        let socket_addr = protocol::peer_to_socket_addr(peer_address.address, scope_id, peer_address.ports.p2p);
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            send_message_to(&socket_addr, message)
+            protocol::send_message_to(&socket_addr, message)
         })
         .await
     }
@@ -277,14 +261,6 @@ impl Session {
     }
 
     fn peer_id_from_address(&self, group_id: GroupId, address: &SocketAddr) -> Option<PeerId> {
-        let address = match address {
-            SocketAddr::V4(ref addr) => {
-                error!("Unexpected message from ipv4 address {addr:?}");
-                return None;
-            }
-            SocketAddr::V6(addr) => addr,
-        };
-
         // TODO: This lookup could be faster, really.
         let groups = self.groups.read();
         let Some(group) = groups.get(group_id.0) else {
@@ -295,7 +271,7 @@ impl Session {
             if info
                 .address
                 .as_ref()
-                .is_some_and(|addr| addr.link_local_address == *address.ip())
+                .is_some_and(|addr| addr.address == address.ip())
             {
                 return Some(*peer_id);
             }
@@ -306,21 +282,16 @@ impl Session {
 
     async fn send_control_message(
         &self,
-        link_local_address: Ipv6Addr,
+        address: IpAddr,
         control_port: u16,
         scope_id: u32,
         message: ControlMessage,
     ) -> GenericResult<()> {
-        trace!("Session::send_control_message({link_local_address:?}, {scope_id}, {message:?})");
-        let local_addr = SocketAddrV6::new(
-            link_local_address,
-            control_port,
-            /* flowinfo = */ 0,
-            scope_id,
-        );
+        trace!("Session::send_control_message({address:?}, {scope_id}, {message:?})");
+        let socket_addr = protocol::peer_to_socket_addr(address, scope_id, control_port);
         let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            send_message_to(&local_addr, &msg)
+            protocol::send_message_to(&socket_addr, &msg)
         })
         .await
     }
@@ -370,14 +341,7 @@ impl Session {
                                 error!("Couldn't associate with {id:?}");
                                 continue;
                             };
-                            let link_local_address = match address.ip() {
-                                IpAddr::V4(v4addr) => {
-                                    warn!("Unexpected ipv4 address {v4addr:?} in control message");
-                                    continue;
-                                }
-                                IpAddr::V6(v6addr) => v6addr.clone(),
-                            };
-
+                            let address = address.ip().clone();
                             let is_new_connection = {
                                 let mut groups = session.groups.write();
                                 let Some(group) = groups.get_mut(group_id.0) else {
@@ -385,7 +349,7 @@ impl Session {
                                     continue;
                                 };
                                 let address = PeerAddress {
-                                    link_local_address,
+                                    address,
                                     ports,
                                 };
                                 match group.peers.entry(peer_id) {
@@ -416,7 +380,7 @@ impl Session {
                                 // just associate and notify itself...
                                 let result = session
                                     .send_control_message(
-                                        link_local_address,
+                                        address,
                                         ports.control,
                                         scope_id,
                                         ControlMessage::Associate {
@@ -490,15 +454,14 @@ impl Session {
     async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
         trace!("Session::group_task({group_id:?})");
 
-        let (is_go, go_iface_addr, scope_id) = match session.groups.read().get(group_id.0) {
-            Some(g) => (g.is_go, g.go_iface_addr, g.scope_id),
+        let (is_go, go_ip, scope_id) = match session.groups.read().get(group_id.0) {
+            Some(g) => (g.is_go, g.go_ip_address, g.scope_id),
             None => {
                 error!("Didn't find {group_id:?} on group_task start!");
                 return Err(trivial_error!("Didn't find group on group_task start!"));
             }
         };
 
-        let go_local_addr = utils::mac_addr_to_local_link_address(&go_iface_addr);
         let (control_listener, p2p_listener) = tokio::try_join!(
             TcpListener::bind(SocketAddrV6::new(
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0),
@@ -519,7 +482,7 @@ impl Session {
             p2p: p2p_listener.local_addr()?.port(),
         };
 
-        trace!(" > go = {is_go}, ports = {my_ports:?}, go_local_addr = {go_local_addr:?}");
+        trace!(" > go = {is_go}, ports = {my_ports:?}, go_ip = {go_ip:?}");
         if !is_go {
             let control_message = ControlMessage::Associate {
                 id: session.own_identity(),
@@ -541,10 +504,10 @@ impl Session {
                     is_go
                 ),
                 async move {
-                    trace!("Trying to send control message to {go_local_addr:?}");
+                    trace!("Trying to send control message to {go_ip:?}");
                     session
                         .send_control_message(
-                            go_local_addr,
+                            go_ip,
                             GO_CONTROL_PORT,
                             scope_id,
                             control_message,
@@ -648,9 +611,9 @@ impl Session {
                     debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
                 }
                 JavaNotification::GroupStarted {
-                    go_iface_addr,
                     iface_name,
                     is_go,
+                    go_ip_address,
                 } => {
                     let scope_id = unsafe {
                         libc::if_nametoindex(
@@ -661,7 +624,7 @@ impl Session {
                     let id = {
                         let mut groups = session.groups.write();
                         let handle = groups.insert(Group {
-                            go_iface_addr,
+                            go_ip_address,
                             iface_name,
                             scope_id,
                             is_go,
@@ -738,14 +701,14 @@ impl Session {
         Arc::into_raw(session) as jlong
     }
 
-    // Breaks the cyclic owner <-> native listener.
+    /// Breaks the cyclic owner <-> native listener.
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1drop"]
     extern "C" fn drop<'l>(_env: JNIEnv<'l>, _class: JClass<'l>, raw: jlong) {
         trace!("Session::drop({raw:?})");
         let _ = unsafe { Arc::from_raw(raw as *const Self) };
     }
 
-    // syncs the peer list. Expected an array of Strings.
+    /// Syncs the peer list. Expected an array of Strings.
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1update_1peers"]
     extern "C" fn update_peers<'l>(
         mut env: JNIEnv<'l>,
@@ -774,6 +737,38 @@ impl Session {
             });
         }
         trace!(" > identities: {:?}", identities);
+    }
+
+    /// Signals the group start operation. Android only supports one physical group at a time.
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1group_1joined"]
+    extern "C" fn group_joined<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        raw: jlong,
+        is_go: jboolean,
+        iface_name: JString<'l>,
+        go_device_address: JString<'l>,
+        go_ip_address: JString<'l>,
+    ) {
+        let session = unsafe { &*(raw as *const Self) };
+
+        let is_go = is_go != 0;
+
+        let iface_name = env.get_string(&iface_name).unwrap();
+        let iface_name = iface_name.to_string_lossy().into_owned();
+
+        let go_device_address = env.get_string(&go_device_address).unwrap();
+        let go_device_address = MacAddr::from_str(&go_device_address.to_string_lossy()).unwrap();
+
+        let go_ip_address = env.get_string(&go_ip_address).unwrap();
+        let go_ip_address = std::net::IpAddr::from_str(&go_ip_address.to_string_lossy()).unwrap();
+
+        trace!("Session::group_joined({is_go:?}, {iface_name:?}, {go_device_address:?}, {go_ip_address:?})");
+        session.java_notification.send(JavaNotification::GroupStarted {
+            is_go,
+            iface_name,
+            go_ip_address,
+        }).unwrap();
     }
 }
 

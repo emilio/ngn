@@ -8,10 +8,17 @@
 //! Followed by `len` bytes.
 use super::{GroupId, PeerId};
 use bincode::{Decode, Encode};
+use log::trace;
 use macaddr::MacAddr;
-use std::{collections::HashMap, net::Ipv6Addr, sync::OnceLock};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, SocketAddr, SocketAddrV6},
+    sync::OnceLock,
+    time::Duration,
+};
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::{self, AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
     task::JoinHandle,
 };
 
@@ -160,8 +167,30 @@ pub struct PeerInfo<BackendData> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PeerAddress {
-    pub link_local_address: Ipv6Addr,
+    pub address: IpAddr,
     pub ports: P2pPorts,
+}
+
+/// Given a peer and scope id, get an appropriate SocketAddr to send messages to.
+pub fn peer_to_socket_addr(addr: IpAddr, scope_id: u32, port: u16) -> SocketAddr {
+    match addr {
+        IpAddr::V4(..) => SocketAddr::new(addr, port),
+        IpAddr::V6(a) => SocketAddr::V6(SocketAddrV6::new(
+            a, port, /* flowinfo = */ 0, scope_id,
+        )),
+    }
+}
+
+/// Send a binary message to a given peer address.
+pub async fn send_message_to(addr: &SocketAddr, message: &[u8]) -> GenericResult<()> {
+    trace!("send_message_to({addr:?}, {})", message.len());
+    let mut stream =
+        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
+            Ok(stream) => stream,
+            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
+        };
+    super::protocol::write_binary_message(&mut stream, message).await?;
+    Ok(())
 }
 
 /// Per group association for a given peer.
@@ -175,8 +204,8 @@ pub struct PeerGroupInfo {
 /// Information about the current group.
 #[derive(Debug)]
 pub struct GroupInfo<BackendData> {
-    /// Mac address of the interface, useful to get a local link address for a group owner.
-    pub go_iface_addr: MacAddr,
+    /// Ip address of the group owner.
+    pub go_ip_address: IpAddr,
     /// Name of the interface.
     pub iface_name: String,
     /// Scope id of the interface. This can be derived by the name via if_nametoindex.

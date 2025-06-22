@@ -87,8 +87,14 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     public static String TAG = "NgnSessionProxy";
 
     private static native long ngn_session_init(NgnSessionProxy session, String name);
+
     private static native long ngn_session_update_peers(long native_session, String[] peer_details);
+
     private static native void ngn_session_drop(long native_session);
+
+    private static native void ngn_session_group_lost(long native_session);
+    private static native void ngn_session_group_joined(long native_session, boolean is_go, String go_device_address, String interface_name, String owner_ip_address);
+
     private static native void ngn_init();
 
     // BroadcastReceiver
@@ -116,11 +122,12 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
 
                 Log.d(TAG, "Connection change: " + group);
                 Log.d(TAG, " > NetworkInfo: " + networkInfo);
-                if (networkInfo != null && networkInfo.isConnectedOrConnecting()) {
-                    m_manager.requestGroupInfo(m_channel, this);
+                ConnectionState state = ConnectionState.Disconnected;
+                if (networkInfo.isConnectedOrConnecting()) {
                     m_manager.requestConnectionInfo(m_channel, this);
+                    state = networkInfo.isConnected() ? ConnectionState.Connected : ConnectionState.Connecting;
                 }
-                // TODO: Handle connect/disconnect?
+                m_listener.connectionStateChanged(state);
                 break;
             }
             case WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION: {
@@ -128,6 +135,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
                 assert wifiP2pDevice != null;
                 Log.d(TAG, "DEVICE_CHANGED(" + wifiP2pDevice.deviceName + "): " + wifiP2pDevice);
                 Toast.makeText(context, "P2P device changed: " + wifiP2pDevice.deviceName, Toast.LENGTH_LONG).show();
+                m_manager.requestConnectionInfo(m_channel, this);
                 break;
             }
             default:
@@ -146,15 +154,32 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     }
 
     // ConnectionInfoListener
+    @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
     @Override
     public void onConnectionInfoAvailable(WifiP2pInfo info) {
         Log.d(TAG, "onConnectionInfoAvailable: " + info);
+        m_connectionInfo = info;
+        if (info.groupFormed) {
+            m_manager.requestGroupInfo(m_channel, this);
+        }
     }
 
     // GroupInfoListener
     @Override
     public void onGroupInfoAvailable(WifiP2pGroup group) {
         Log.d(TAG, "onGroupInfoAvailable: " + group);
+        if (m_native == 0) {
+            return;
+        }
+        assert m_connectionInfo != null;
+        if (group == null || !m_connectionInfo.groupFormed) {
+            ngn_session_group_lost(m_native);
+        } else {
+            // TODO(emilio): Would be nice to have group.getOwner().getIpAddress(), but that of course is Android 15 only :'(
+            // Also, it'd be very nice to be able to get the owner interface address, but that is not exposed: WifiP2pDevice
+            // _does_ have it in the android source code, but can't call it from the outside...
+            ngn_session_group_joined(m_native, m_connectionInfo.isGroupOwner, group.getInterface(), group.getOwner().deviceAddress, m_connectionInfo.groupOwnerAddress.getHostAddress());
+        }
     }
 
     // PeerListListener
@@ -328,6 +353,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     IntentFilter m_intentFilter;
     Runnable m_onInit;
     WifiP2pDeviceList m_peerList;
-    long m_native;
+    WifiP2pInfo m_connectionInfo;
+    long m_native = 0;
     NgnListener m_listener;
 }
