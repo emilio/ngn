@@ -33,7 +33,7 @@ async fn create_p2p_session(
         ngn::phy::dbus::SessionInit {
             interface_name,
             device_name,
-            go_intent: 14,
+            go_intent: 1,
         },
         listener,
     )
