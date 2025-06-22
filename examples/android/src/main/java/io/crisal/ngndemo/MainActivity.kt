@@ -34,6 +34,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import io.crisal.ngn.ConnectionState
 import io.crisal.ngn.NgnListener
 import io.crisal.ngn.NgnSessionProxy
 import io.crisal.ngn.Peer
@@ -81,16 +85,22 @@ fun PlaceholderRow(text: String) {
 }
 
 class Listener(val activity: MainActivity) : NgnListener() {
+    override fun connectionStateChanged(state: ConnectionState) {
+        super.connectionStateChanged(state)
+        activity.connectionState.value = state.toString()
+    }
+
     override fun peersChanged(peers: List<Peer>) {
-        super.peersChanged(peers);
-        activity.peers = peers;
+        super.peersChanged(peers)
+        activity.peers.value = peers
     }
 }
 
 class MainActivity : ComponentActivity() {
     private val m_proxy = NgnSessionProxy(this, Listener(this));
 
-    var peers: List<Peer> = arrayListOf()
+    val peers = mutableStateOf<List<Peer>>(arrayListOf())
+    val connectionState = mutableStateOf("Disconnected")
 
     @SuppressLint("MissingPermission")
     private val m_permissionRequest =
@@ -110,7 +120,10 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("MissingPermission")
     fun connectTo(peer: Peer) {
-        m_proxy.connectToPeer(peer.deviceAddress);
+        m_proxy.connectToPeer(peer.deviceAddress) { success ->
+            Log.d(TAG, "connected to $peer: $success");
+            null
+        };
     }
 
     override fun onResume() {
@@ -133,29 +146,32 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     LazyColumn(modifier = Modifier.padding(innerPadding)) {
                         stickyHeader {
-                            IconButton(onClick = {
-                                @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
-                                if (hasAllRequiredPermissions(this@MainActivity)) {
-                                    m_proxy.init {
-                                        Log.d(TAG, "Initialized m_proxy from button");
-                                        m_proxy.discoverPeers { success ->
-                                            Log.d(TAG, "Initiated discovery: $success")
-                                            null
-                                        };
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = {
+                                    @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
+                                    if (hasAllRequiredPermissions(this@MainActivity)) {
+                                        m_proxy.init {
+                                            Log.d(TAG, "Initialized m_proxy from button");
+                                            m_proxy.discoverPeers { success ->
+                                                Log.d(TAG, "Initiated discovery: $success")
+                                                null
+                                            };
+                                        }
+                                    } else {
+                                        m_permissionRequest.launch(REQUIRED_PERMISSIONS);
                                     }
-                                } else {
-                                    m_permissionRequest.launch(REQUIRED_PERMISSIONS);
+                                }) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
                                 }
-                            }, modifier = Modifier.padding(innerPadding)) {
-                                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                                Text(connectionState.value)
                             }
                         }
-                        if (peers.isEmpty()) {
+                        if (peers.value.isEmpty()) {
                             item {
                                 PlaceholderRow("Peers will show up here")
                             }
                         } else {
-                            items(peers) { peer ->
+                            items(peers.value) { peer ->
                                 PeerInfoRow(peer, this@MainActivity)
                             }
                         }
