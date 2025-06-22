@@ -8,35 +8,36 @@
 use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 use handy::HandleMap;
 use jni::{
-    objects::{GlobalRef, JClass, JObject, JString},
+    objects::{GlobalRef, JClass, JObject, JObjectArray, JString},
     JNIEnv, JavaVM,
 };
 use jni_sys::jlong;
 
 use crate::{
     phy::protocol::{
-        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity, PeerOwnIdentifier, GO_CONTROL_PORT
+        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity, PeerInfo,
+        PeerOwnIdentifier, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
 };
+use macaddr::MacAddr;
 
-use futures_lite::StreamExt;
 use log::{error, trace, warn};
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::hash_map::Entry,
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
     str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use tokio::{sync::mpsc, task::JoinHandle};
 use tokio::{
     self, io,
     net::{TcpListener, TcpStream},
 };
+use tokio::{sync::mpsc, task::JoinHandle};
 
-const WPS_METHOD: &'static str = "pbc";
+// const WPS_METHOD: &'static str = "pbc";
 
 // TODO: Probably should allow to get an external runtime or so.
 fn rt() -> &'static tokio::runtime::Runtime {
@@ -50,12 +51,35 @@ fn rt() -> &'static tokio::runtime::Runtime {
 }
 
 /// Representation of system messages that we need to handle
+#[derive(Debug)]
 enum JavaNotification {
     FindStopped,
     DeviceFound(PeerIdentity),
     DeviceLost(PeerIdentity),
     // InvitationReceived,
     // InvitationResult,
+    // WpsFailed,
+    GroupStarted {
+        go_iface_addr: MacAddr,
+        iface_name: String,
+        is_go: bool,
+    },
+    // TODO: We're going to need some sort of identifier here.
+    // GroupFinished(..),
+    // GroupFormationFailure,
+    // GoNegotiationRequest(..),
+    // GoNegotiationFailure(..),
+    // PersistentGroupAddeed(..),
+    // PersistentGroupRemoved(..),
+    // PersistentGroupsChanged(..),
+    // ProvisionDiscoveryFailure(..),
+    // ProvisionDiscoveryRequestDisplayPin(..),
+    // ProvisionDiscoveryResponseDisplayPin(..),
+    // ProvisionDiscoveryRequestEnterPin(..),
+    // ProvisionDiscoveryPbcRequest(..),
+    // ProvisionDiscoveryPbcResponse(..),
+    // PeersChanged(..),
+    // PersistentGroupsChanged(..),
 }
 
 #[derive(Debug)]
@@ -75,7 +99,7 @@ pub struct Session {
     peers: RwLock<HandleMap<Peer>>,
     groups: RwLock<HandleMap<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
-    java_notification: mpsc::Sender<JavaNotification>,
+    java_notification: mpsc::UnboundedSender<JavaNotification>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
     /// The name we expose to our P2P peers. We store it instead of the device address because the
@@ -233,9 +257,11 @@ impl Session {
     }
 
     fn new_sync(init: SessionInit<'_>, listener: Arc<dyn P2PSessionListener<Self>>) -> Arc<Self> {
+        let (tx, rx) = mpsc::unbounded_channel();
         let session = Arc::new(Self {
             peers: Default::default(),
             groups: Default::default(),
+            java_notification: tx,
             vm: init.vm,
             proxy: init.proxy,
             go_intent: init.go_intent,
@@ -244,7 +270,7 @@ impl Session {
             run_loop_task: RwLock::new(None),
         });
 
-        let handle = rt().spawn(Session::run_loop(Arc::clone(&session)));
+        let handle = rt().spawn(Session::run_loop(Arc::clone(&session), rx));
         *session.run_loop_task.write() = Some(handle);
 
         session
@@ -544,22 +570,149 @@ impl Session {
         Ok(())
     }
 
-    async fn run_loop(session: Arc<Self>) -> GenericResult<()> {
+    async fn run_loop(
+        session: Arc<Self>,
+        mut rx: mpsc::UnboundedReceiver<JavaNotification>,
+    ) -> GenericResult<()> {
         trace!("Session::run_loop");
-        todo!();
+        while let Some(message) = rx.recv().await {
+            trace!("run_loop: {:?}", message);
+            match message {
+                JavaNotification::FindStopped => {
+                    session.listener.peer_discovery_stopped(&session);
+                }
+                JavaNotification::DeviceFound(identity) => {
+                    let id = {
+                        let mut peers = session.peers.write();
+                        if let Some(id) =
+                            Self::find_peer_id_by_dev_addr_in_map(&peers, &identity.dev_addr)
+                        {
+                            let existing = peers.get_mut(id.0).expect("DBUS store out of sync");
+                            trace!("Peer was already registered (from previous scan?) with identity {:?}", existing.identity);
+                            // TODO(emilio): Consider not notifying? Kinda puts the burden of
+                            // preserving peer list to the parent.
+                            id
+                        } else {
+                            PeerId(peers.insert(Peer {
+                                identity,
+                                groups: Vec::new(),
+                                data: AndroidPeerData,
+                            }))
+                        }
+                    };
+                    session.listener.peer_discovered(&session, id);
+                }
+                JavaNotification::DeviceLost(identity) => {
+                    let (peer_id, groups_disconnected) = {
+                        let mut peers = session.peers.write();
+                        let Some(id) =
+                            Self::find_peer_id_by_dev_addr_in_map(&peers, &identity.dev_addr)
+                        else {
+                            error!("Got unknown device lost {identity:?}");
+                            continue;
+                        };
+
+                        let Some(peer) = peers.get_mut(id.0) else {
+                            error!("Got unknown device lost {identity:?}, {id:?}");
+                            continue;
+                        };
+
+                        trace!("Peer lost: {peer:?}");
+                        (id, std::mem::take(&mut peer.groups))
+                    };
+
+                    // Remove the peer for any outstanding groups before notifying the
+                    // listener of the peer being lost.
+                    if !groups_disconnected.is_empty() {
+                        let mut groups = session.groups.write();
+                        for group_id in &groups_disconnected {
+                            let Some(group) = groups.get_mut(group_id.0) else {
+                                error!("Tried to disconnect peer {peer_id:?} from {group_id:?}, but didn't find group");
+                                continue;
+                            };
+                            let removed = group.peers.remove(&peer_id);
+                            debug_assert!(
+                                removed.is_some(),
+                                "Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers"
+                            );
+                        }
+                        for group_id in &groups_disconnected {
+                            session
+                                .listener
+                                .peer_left_group(&session, *group_id, peer_id);
+                        }
+                    }
+
+                    session.listener.peer_lost(&session, peer_id);
+                    let removed = session.peers.write().remove(peer_id.0);
+                    debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
+                }
+                JavaNotification::GroupStarted {
+                    go_iface_addr,
+                    iface_name,
+                    is_go,
+                } => {
+                    let scope_id = unsafe {
+                        libc::if_nametoindex(
+                            std::ffi::CString::new(iface_name.clone()).unwrap().as_ptr(),
+                        )
+                    };
+                    trace!("Interface scope id is {scope_id:?}");
+                    let id = {
+                        let mut groups = session.groups.write();
+                        let handle = groups.insert(Group {
+                            go_iface_addr,
+                            iface_name,
+                            scope_id,
+                            is_go,
+                            peers: Default::default(),
+                            group_task: OnceLock::new(),
+                            data: AndroidGroupData,
+                        });
+                        let id = GroupId(handle);
+                        groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
+                            let session = session.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = Session::group_task(session, id).await {
+                                    error!("Group task for {id:?} failed with {e}");
+                                    return Err(e);
+                                }
+                                Ok(())
+                            })
+                        });
+                        id
+                    };
+                    session.listener.joined_group(&session, id, is_go);
+                }
+            }
+        }
+        Ok(())
     }
 
-    fn find_peer_id_by_own_addr(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
-        trace!("find_peer_id_by_dev_addr({own_id:?})");
-        // TODO(emilio): Make this non-linear.
-        let peers = self.peers.read();
-        for (id, peer) in peers.iter_with_handles() {
+    fn find_peer_id_by_dev_addr_in_map(
+        peer_map: &HandleMap<Peer>,
+        dev_addr: &MacAddr,
+    ) -> Option<PeerId> {
+        let own_id = PeerOwnIdentifier::DevAddr(dev_addr.clone().into());
+        Self::find_peer_id_by_own_addr_in_map(peer_map, &own_id)
+    }
+
+    fn find_peer_id_by_own_addr_in_map(
+        peer_map: &HandleMap<Peer>,
+        own_id: &PeerOwnIdentifier,
+    ) -> Option<PeerId> {
+        trace!("find_peer_id_by_own_addr({own_id:?})");
+        for (id, peer) in peer_map.iter_with_handles() {
             trace!(" {:?} -> {:?}", id, peer.identity);
             if peer.identity.matches(own_id) {
                 return Some(PeerId(id));
             }
         }
         None
+    }
+
+    fn find_peer_id_by_own_addr(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
+        Self::find_peer_id_by_own_addr_in_map(&self.peers.read(), own_id)
     }
 
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
@@ -583,6 +736,44 @@ impl Session {
         // TODO(emilio): Need a listener that proxies to `NgnSessionProxy`.
         let session = Self::new_sync(init, Arc::new(super::LoggerListener::default()));
         Arc::into_raw(session) as jlong
+    }
+
+    // Breaks the cyclic owner <-> native listener.
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1drop"]
+    extern "C" fn drop<'l>(_env: JNIEnv<'l>, _class: JClass<'l>, raw: jlong) {
+        trace!("Session::drop({raw:?})");
+        let _ = unsafe { Arc::from_raw(raw as *const Self) };
+    }
+
+    // syncs the peer list. Expected an array of Strings.
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1update_1peers"]
+    extern "C" fn update_peers<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        raw: jlong,
+        details: JObjectArray<'l>,
+    ) {
+        const STEP: usize = 2;
+        trace!("Session::update_peers({raw:?})");
+        let _session = unsafe { &*(raw as *const Self) };
+        let len = env.get_array_length(&details).unwrap();
+        assert!(len as usize % STEP == 0, "Should have the right step");
+        let mut identities = Vec::<PeerIdentity>::with_capacity(len as usize / STEP);
+        let mut get_string = |i| {
+            let string = env.get_object_array_element(&details, i).unwrap();
+            let string = unsafe { JString::from_raw(string.as_raw()) };
+            let string = env.get_string(&string).unwrap();
+            string.to_string_lossy().into_owned()
+        };
+        for i in (0..len).step_by(STEP) {
+            let name = get_string(i);
+            let dev_addr = MacAddr::from_str(&get_string(i + 1)).unwrap();
+            identities.push(PeerIdentity {
+                name,
+                dev_addr,
+            });
+        }
+        trace!(" > identities: {:?}", identities);
     }
 }
 

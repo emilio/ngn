@@ -1,6 +1,7 @@
 package io.crisal.ngndemo
 
 
+import androidx.compose.foundation.lazy.items
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -16,17 +17,34 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import io.crisal.ngn.NgnListener
 import io.crisal.ngn.NgnSessionProxy
+import io.crisal.ngn.Peer
 import io.crisal.ngndemo.ui.theme.NgnDemoTheme
 
 
@@ -44,8 +62,35 @@ fun hasAllRequiredPermissions(context: Context): Boolean {
     }
 }
 
+const val TAG = "MainActivity";
+
+@Composable
+fun PeerInfoRow(peer: Peer, activity: MainActivity) {
+    Row {
+        Button(onClick = {
+            activity.connectTo(peer)
+        }) {
+            Text("${peer.name} (${peer.deviceAddress})")
+        }
+    }
+}
+
+@Composable
+fun PlaceholderRow(text: String) {
+    Text(text, color = Color.Companion.Gray, fontStyle = FontStyle.Italic)
+}
+
+class Listener(val activity: MainActivity) : NgnListener() {
+    override fun peersChanged(peers: List<Peer>) {
+        super.peersChanged(peers);
+        activity.peers = peers;
+    }
+}
+
 class MainActivity : ComponentActivity() {
-    private val m_proxy = NgnSessionProxy(this);
+    private val m_proxy = NgnSessionProxy(this, Listener(this));
+
+    var peers: List<Peer> = arrayListOf()
 
     @SuppressLint("MissingPermission")
     private val m_permissionRequest =
@@ -57,9 +102,16 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_SHORT
                 ).show();
             } else {
-                m_proxy.init();
+                m_proxy.init {
+                    Log.d(TAG, "Proxy initialized successfully")
+                }
             }
         }
+
+    @SuppressLint("MissingPermission")
+    fun connectTo(peer: Peer) {
+        m_proxy.connectToPeer(peer.deviceAddress);
+    }
 
     override fun onResume() {
         super.onResume()
@@ -71,43 +123,45 @@ class MainActivity : ComponentActivity() {
         m_proxy.onPause();
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
-        if (hasAllRequiredPermissions(this)) {
-            m_proxy.init();
-        }
-
         setContent {
             NgnDemoTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    if (!hasAllRequiredPermissions(this)) {
-                        Button(onClick = {
-                            m_permissionRequest.launch(REQUIRED_PERMISSIONS);
-                        }, modifier = Modifier.padding(innerPadding)) {
-                            Text("Request permissions")
+                    LazyColumn(modifier = Modifier.padding(innerPadding)) {
+                        stickyHeader {
+                            IconButton(onClick = {
+                                @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
+                                if (hasAllRequiredPermissions(this@MainActivity)) {
+                                    m_proxy.init {
+                                        Log.d(TAG, "Initialized m_proxy from button");
+                                        m_proxy.discoverPeers { success ->
+                                            Log.d(TAG, "Initiated discovery: $success")
+                                            null
+                                        };
+                                    }
+                                } else {
+                                    m_permissionRequest.launch(REQUIRED_PERMISSIONS);
+                                }
+                            }, modifier = Modifier.padding(innerPadding)) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                            }
+                        }
+                        if (peers.isEmpty()) {
+                            item {
+                                PlaceholderRow("Peers will show up here")
+                            }
+                        } else {
+                            items(peers) { peer ->
+                                PeerInfoRow(peer, this@MainActivity)
+                            }
                         }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    NgnDemoTheme {
-        Greeting("Android")
     }
 }
