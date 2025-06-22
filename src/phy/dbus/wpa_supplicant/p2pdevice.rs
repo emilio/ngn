@@ -328,8 +328,8 @@ pub trait P2PDevice {
     fn persistent_groups(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
 
     /// DeviceAddress property
-    #[zbus(property)]
-    fn device_address(&self) -> zbus::Result<Vec<u8>>;
+    // #[zbus(property)]
+    // fn device_address(&self) -> zbus::Result<Vec<u8>>;
 
     /// Role property
     #[zbus(property)]

@@ -85,8 +85,8 @@ pub struct Session {
     listener: Arc<dyn P2PSessionListener<Self>>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
-    /// Our own P2P device address.
-    dev_addr: MacAddr,
+    /// Our own P2P identifier address.
+    own_id: PeerOwnIdentifier,
 }
 
 impl Drop for Session {
@@ -207,6 +207,10 @@ impl P2PSession for Session {
             })
             .await?;
 
+        // TODO(emilio): use device_address() if available.
+        let own_id = PeerOwnIdentifier::Name(init.device_name.into());
+
+        /*
         let dev_addr = p2pdevice.device_address().await?;
         trace!("Own P2P device address: {dev_addr:?}");
         let Some(dev_addr) = utils::to_mac_addr(&dev_addr) else {
@@ -214,7 +218,7 @@ impl P2PSession for Session {
                 "Expected a valid mac address from
 P2PDevice::device_address()"
             ));
-        };
+        };*/
 
         trace!("Successfully initialized P2P session");
         let session = Arc::new(Self {
@@ -224,7 +228,7 @@ P2PDevice::device_address()"
             go_intent: init.go_intent,
             peers: Default::default(),
             groups: Default::default(),
-            dev_addr,
+            own_id,
             listener,
             run_loop_task: RwLock::new(None),
         });
@@ -316,9 +320,7 @@ P2PDevice::device_address()"
 
 impl Session {
     fn own_identifier(&self) -> PeerOwnIdentifier {
-        // TODO(emilio): Consider switching dbus to name-based association if dev address is not
-        // available.
-        PeerOwnIdentifier::DevAddr(self.dev_addr.into())
+        self.own_id.clone()
     }
 
     pub fn system_bus(&self) -> &zbus::Connection {
@@ -1082,12 +1084,12 @@ impl Session {
                     let peer = Value::from(peer_path);
                     let method = Value::from(WPS_METHOD);
                     let go_intent = Value::from(session.go_intent as i32);
-                    let auto_join = Value::from(true);
+                    // let auto_join = Value::from(true);
                     tokio::spawn(async move {
                         let mut connect_args = HashMap::new();
                         connect_args.insert("peer", &peer);
                         connect_args.insert("wps_method", &method);
-                        connect_args.insert("auto_join", &auto_join);
+                        // connect_args.insert("auto_join", &auto_join);
                         connect_args.insert("go_intent", &go_intent);
                         session.p2pdevice.connect(connect_args).await
                     });
@@ -1260,10 +1262,10 @@ impl Session {
         let mut args = HashMap::default();
         let method = Value::from(WPS_METHOD);
         let go_intent = Value::from(self.go_intent as i32);
-        let auto_join = Value::from(true);
+        // let auto_join = Value::from(true);
         let peer_path = Value::from(peer_path);
         args.insert("peer", &peer_path);
-        args.insert("auto_join", &auto_join);
+        // args.insert("auto_join", &auto_join);
         args.insert("wps_method", &method);
         args.insert("go_intent", &go_intent);
         match self.p2pdevice.connect(args).await {
