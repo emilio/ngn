@@ -378,26 +378,7 @@ impl Session {
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
-                loop {
-                    let buf = match super::protocol::read_binary_message(&mut stream).await {
-                        Ok(buf) => buf,
-                        Err(e) => {
-                            // XXX EOF isn't really unexpected.
-                            error!("Unexpected error reading message from {address:?}: {e:?}");
-                            return;
-                        }
-                    };
-                    let Ok((control_message, len)) = bincode::decode_from_slice::<ControlMessage, _>(
-                        &buf,
-                        bincode::config::standard(),
-                    ) else {
-                        error!("Failed to decode binary control message {buf:?}");
-                        return;
-                    };
-                    if len != buf.len() {
-                        error!("Unexpected decoded message length {} vs {}", len, buf.len());
-                        return;
-                    }
+                while let Ok(control_message) = super::protocol::read_control_message(&mut stream, &address).await {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
                         ControlMessage::Associate { id, ports } => {
@@ -494,8 +475,7 @@ impl Session {
                     let buf = match super::protocol::read_binary_message(&mut stream).await {
                         Ok(buf) => buf,
                         Err(e) => {
-                            // XXX EOF isn't really unexpected.
-                            error!("Unexpected error reading message from {address:?}: {e:?}");
+                            super::protocol::log_error(&*e, &address);
                             return;
                         }
                     };

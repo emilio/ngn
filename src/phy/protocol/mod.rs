@@ -8,17 +8,14 @@
 //! Followed by `len` bytes.
 use super::{GroupId, PeerId};
 use bincode::{Decode, Encode};
-use log::trace;
+use log::{trace, error};
 use macaddr::MacAddr;
 use std::{
-    collections::HashMap,
-    net::{IpAddr, SocketAddr, SocketAddrV6},
-    sync::OnceLock,
-    time::Duration,
+    collections::HashMap, io::ErrorKind, net::{IpAddr, SocketAddr, SocketAddrV6}, sync::OnceLock, time::Duration
 };
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
     task::JoinHandle,
 };
 
@@ -60,6 +57,40 @@ pub async fn read_binary_message(mut reader: impl AsyncReadExt + Unpin) -> Gener
         buf.set_len(len as usize);
     }
     Ok(buf)
+}
+
+pub async fn read_control_message(reader: impl AsyncReadExt + Unpin, source_address: &SocketAddr) -> GenericResult<ControlMessage> {
+    let buf = match read_binary_message(reader).await {
+        Ok(buf) => buf,
+        Err(e) => {
+            log_error(&*e, source_address);
+            return Err(e);
+        }
+    };
+    let (control_message, len) = match bincode::decode_from_slice::<ControlMessage, _>(
+        &buf,
+        bincode::config::standard(),
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to decode binary control message {buf:?} {e:?}");
+            return Err(e.into());
+        }
+    };
+    if len != buf.len() {
+        error!("Unexpected decoded message length {} vs {}", len, buf.len());
+        return Err(trivial_error!("Invalid message length"));
+    }
+    Ok(control_message)
+}
+
+pub fn log_error(e: &(dyn std::error::Error + 'static), source_address: &SocketAddr) {
+    if let Some(io) = e.downcast_ref::<std::io::Error>() {
+        if io.kind() == ErrorKind::UnexpectedEof {
+            return trace!("Got EOF from {source_address:?}");
+        }
+    }
+    error!("Unexpected error from {source_address:?}: {e}");
 }
 
 pub async fn write_binary_message(

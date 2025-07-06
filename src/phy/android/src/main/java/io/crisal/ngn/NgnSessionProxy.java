@@ -119,6 +119,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
             case WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION: {
                 final WifiP2pGroup group = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP);
                 final NetworkInfo networkInfo = intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
+                assert networkInfo != null;
 
                 Log.d(TAG, "Connection change: " + group);
                 Log.d(TAG, " > NetworkInfo: " + networkInfo);
@@ -173,13 +174,21 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         }
         assert m_connectionInfo != null;
         if (group == null || !m_connectionInfo.groupFormed) {
+            if (m_currentGroup == null) {
+                return;
+            }
+            m_currentGroup = null;
             ngn_session_group_lost(m_native);
-        } else {
-            // TODO(emilio): Would be nice to have group.getOwner().getIpAddress(), but that of course is Android 15 only :'(
-            // Also, it'd be very nice to be able to get the owner interface address, but that is not exposed: WifiP2pDevice
-            // _does_ have it in the android source code, but can't call it from the outside...
-            ngn_session_group_joined(m_native, m_connectionInfo.isGroupOwner, group.getInterface(), group.getOwner().deviceAddress, m_connectionInfo.groupOwnerAddress.getHostAddress());
+            return;
         }
+        if (m_currentGroup != null) {
+            return;
+        }
+        m_currentGroup = group;
+        // TODO(emilio): Would be nice to have group.getOwner().getIpAddress(), but that of course is Android 15 only :'(
+        // Also, it'd be very nice to be able to get the owner interface address, but that is not exposed: WifiP2pDevice
+        // _does_ have it in the android source code, but can't call it from the outside...
+        ngn_session_group_joined(m_native, m_connectionInfo.isGroupOwner, group.getInterface(), group.getOwner().deviceAddress, m_connectionInfo.groupOwnerAddress.getHostAddress());
     }
 
     // PeerListListener
@@ -230,7 +239,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
      * Initializes the P2P session. This needs to be outside the constructor so that the app can
      * make sure to obtain the right permissions.
      *
-     * @param aP2pManager WifiP2pManager
+     * @param onInit Runnable, what to run once we're initialized.
      */
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
     public boolean init(Runnable onInit) {
@@ -263,7 +272,8 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         m_listener.peersChanged(peerArrayList);
     }
 
-    public void finalize() {
+    @Override
+    protected void finalize() {
         if (m_native == 0) {
             return; // Already finalized, or not initialized.
         }
@@ -354,6 +364,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     Runnable m_onInit;
     WifiP2pDeviceList m_peerList;
     WifiP2pInfo m_connectionInfo;
+    WifiP2pGroup m_currentGroup;
     long m_native = 0;
     NgnListener m_listener;
 }

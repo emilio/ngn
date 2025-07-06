@@ -15,7 +15,7 @@ use jni_sys::{jboolean, jlong};
 
 use crate::{
     phy::protocol::{
-        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity, PeerInfo,
+        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity,
         PeerOwnIdentifier, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
@@ -25,16 +25,13 @@ use macaddr::MacAddr;
 use log::{error, trace, warn};
 use parking_lot::RwLock;
 use std::{
-    collections::hash_map::Entry,
+    collections::{hash_map::Entry, HashMap, HashSet},
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
     str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
 };
-use tokio::{
-    self, io,
-    net::{TcpListener, TcpStream},
-};
+use tokio::{self, net::TcpListener};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 // const WPS_METHOD: &'static str = "pbc";
@@ -54,8 +51,7 @@ fn rt() -> &'static tokio::runtime::Runtime {
 #[derive(Debug)]
 enum JavaNotification {
     FindStopped,
-    DeviceFound(PeerIdentity),
-    DeviceLost(PeerIdentity),
+    UpdateDevices(Vec<PeerIdentity>),
     // InvitationReceived,
     // InvitationResult,
     // WpsFailed,
@@ -90,13 +86,27 @@ type Peer = protocol::PeerInfo<AndroidPeerData>;
 struct AndroidGroupData;
 type Group = protocol::GroupInfo<AndroidGroupData>;
 
+#[derive(Debug, Default)]
+struct PeerStore {
+    map: HandleMap<Peer>,
+    /// This is only used to speed up device updates, we could also track name to id.
+    mac_to_id: HashMap<MacAddr, PeerId>,
+}
+
+impl PeerStore {
+    fn clear(&mut self) {
+        self.map.clear();
+        self.mac_to_id.clear();
+    }
+}
+
 /// Global state for a P2P session.
 #[derive(Debug)]
 pub struct Session {
     vm: JavaVM,
     proxy: GlobalRef,
     go_intent: u32,
-    peers: RwLock<HandleMap<Peer>>,
+    peers: RwLock<PeerStore>,
     groups: RwLock<HandleMap<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
     java_notification: mpsc::UnboundedSender<JavaNotification>,
@@ -177,14 +187,14 @@ impl P2PSession for Session {
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().get(id.0)?.identity.name.to_owned())
+        Some(self.peers.read().map.get(id.0)?.identity.name.to_owned())
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
         trace!("Session::connect_to_peer({id:?})");
         let device_address = {
             let peers = self.peers.read();
-            let Some(peer) = peers.get(id.0) else {
+            let Some(peer) = peers.map.get(id.0) else {
                 return Err(trivial_error!("Couldn't find peer id"));
             };
             peer.identity.dev_addr.clone()
@@ -208,7 +218,7 @@ impl P2PSession for Session {
         let (peer_address, scope_id) = {
             let peers = self.peers.read();
             let groups = self.groups.read();
-            let Some(peer) = peers.get(id.0) else {
+            let Some(peer) = peers.map.get(id.0) else {
                 return Err(trivial_error!("Peer was lost (stale handle?)"));
             };
             // Choose one arbitrary group to connect to it.
@@ -227,7 +237,8 @@ impl P2PSession for Session {
             };
             (address, group.scope_id)
         };
-        let socket_addr = protocol::peer_to_socket_addr(peer_address.address, scope_id, peer_address.ports.p2p);
+        let socket_addr =
+            protocol::peer_to_socket_addr(peer_address.address, scope_id, peer_address.ports.p2p);
         utils::retry_timeout(Duration::from_secs(2), 5, || {
             protocol::send_message_to(&socket_addr, message)
         })
@@ -314,26 +325,7 @@ impl Session {
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
-                loop {
-                    let buf = match super::protocol::read_binary_message(&mut stream).await {
-                        Ok(buf) => buf,
-                        Err(e) => {
-                            // XXX EOF isn't really unexpected.
-                            error!("Unexpected error reading message from {address:?}: {e:?}");
-                            return;
-                        }
-                    };
-                    let Ok((control_message, len)) = bincode::decode_from_slice::<ControlMessage, _>(
-                        &buf,
-                        bincode::config::standard(),
-                    ) else {
-                        error!("Failed to decode binary control message {buf:?}");
-                        return;
-                    };
-                    if len != buf.len() {
-                        error!("Unexpected decoded message length {} vs {}", len, buf.len());
-                        return;
-                    }
+                while let Ok(control_message) = super::protocol::read_control_message(&mut stream, &address).await {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
                         ControlMessage::Associate { id, ports } => {
@@ -348,10 +340,7 @@ impl Session {
                                     warn!("Group {group_id:?} was torn down?");
                                     continue;
                                 };
-                                let address = PeerAddress {
-                                    address,
-                                    ports,
-                                };
+                                let address = PeerAddress { address, ports };
                                 match group.peers.entry(peer_id) {
                                     Entry::Occupied(mut o) => {
                                         let info = o.get_mut();
@@ -432,8 +421,7 @@ impl Session {
                     let buf = match super::protocol::read_binary_message(&mut stream).await {
                         Ok(buf) => buf,
                         Err(e) => {
-                            // XXX EOF isn't really unexpected.
-                            error!("Unexpected error reading message from {address:?}: {e:?}");
+                            super::protocol::log_error(&*e, &address);
                             return;
                         }
                     };
@@ -506,12 +494,7 @@ impl Session {
                 async move {
                     trace!("Trying to send control message to {go_ip:?}");
                     session
-                        .send_control_message(
-                            go_ip,
-                            GO_CONTROL_PORT,
-                            scope_id,
-                            control_message,
-                        )
+                        .send_control_message(go_ip, GO_CONTROL_PORT, scope_id, control_message)
                         .await
                 },
             )?;
@@ -544,71 +527,73 @@ impl Session {
                 JavaNotification::FindStopped => {
                     session.listener.peer_discovery_stopped(&session);
                 }
-                JavaNotification::DeviceFound(identity) => {
-                    let id = {
+                JavaNotification::UpdateDevices(identities) => {
+                    let mut peers_joined = vec![];
+                    let mut peers_lost = vec![];
+                    {
                         let mut peers = session.peers.write();
-                        if let Some(id) =
-                            Self::find_peer_id_by_dev_addr_in_map(&peers, &identity.dev_addr)
-                        {
-                            let existing = peers.get_mut(id.0).expect("DBUS store out of sync");
-                            trace!("Peer was already registered (from previous scan?) with identity {:?}", existing.identity);
-                            // TODO(emilio): Consider not notifying? Kinda puts the burden of
-                            // preserving peer list to the parent.
-                            id
-                        } else {
-                            PeerId(peers.insert(Peer {
+                        let peers = &mut *peers;
+                        let mut seen_ids = HashSet::new();
+                        for identity in identities {
+                            let dev_addr = identity.dev_addr.clone();
+                            seen_ids.insert(dev_addr.clone());
+                            let id = peers.mac_to_id.get(&dev_addr).copied();
+                            if let Some(id) = id {
+                                trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get_mut(id.0).map(|p| &p.identity));
+                                continue;
+                            }
+                            let id = PeerId(peers.map.insert(Peer {
                                 identity,
                                 groups: Vec::new(),
                                 data: AndroidPeerData,
-                            }))
+                            }));
+                            peers.mac_to_id.insert(dev_addr, id);
+                            peers_joined.push(id);
                         }
-                    };
-                    session.listener.peer_discovered(&session, id);
-                }
-                JavaNotification::DeviceLost(identity) => {
-                    let (peer_id, groups_disconnected) = {
-                        let mut peers = session.peers.write();
-                        let Some(id) =
-                            Self::find_peer_id_by_dev_addr_in_map(&peers, &identity.dev_addr)
-                        else {
-                            error!("Got unknown device lost {identity:?}");
-                            continue;
-                        };
-
-                        let Some(peer) = peers.get_mut(id.0) else {
-                            error!("Got unknown device lost {identity:?}, {id:?}");
-                            continue;
-                        };
-
-                        trace!("Peer lost: {peer:?}");
-                        (id, std::mem::take(&mut peer.groups))
-                    };
-
-                    // Remove the peer for any outstanding groups before notifying the
-                    // listener of the peer being lost.
-                    if !groups_disconnected.is_empty() {
-                        let mut groups = session.groups.write();
-                        for group_id in &groups_disconnected {
-                            let Some(group) = groups.get_mut(group_id.0) else {
-                                error!("Tried to disconnect peer {peer_id:?} from {group_id:?}, but didn't find group");
-                                continue;
-                            };
-                            let removed = group.peers.remove(&peer_id);
-                            debug_assert!(
-                                removed.is_some(),
-                                "Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers"
-                            );
-                        }
-                        for group_id in &groups_disconnected {
-                            session
-                                .listener
-                                .peer_left_group(&session, *group_id, peer_id);
+                        if seen_ids.len() != peers.mac_to_id.len() {
+                            // Some device has been lost.
+                            for (mac, id) in &peers.mac_to_id {
+                                if seen_ids.contains(mac) {
+                                    continue;
+                                }
+                                let Some(peer) = peers.map.get_mut(id.0) else {
+                                    error!("Store out of sync for {mac:?}, {id:?}!");
+                                    continue;
+                                };
+                                trace!("Peer lost: {peer:?}");
+                                peers_lost.push((*id, std::mem::take(&mut peer.groups)));
+                            }
                         }
                     }
-
-                    session.listener.peer_lost(&session, peer_id);
-                    let removed = session.peers.write().remove(peer_id.0);
-                    debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
+                    for (peer_id, groups_disconnected) in peers_lost {
+                        // Remove the peer for any outstanding groups before notifying the listener
+                        // of the peer being lost.
+                        if !groups_disconnected.is_empty() {
+                            let mut groups = session.groups.write();
+                            for group_id in &groups_disconnected {
+                                let Some(group) = groups.get_mut(group_id.0) else {
+                                    error!("Tried to disconnect peer {peer_id:?} from {group_id:?}, but didn't find group");
+                                    continue;
+                                };
+                                let removed = group.peers.remove(&peer_id);
+                                debug_assert!(
+                                    removed.is_some(),
+                                    "Tried to disconnect peer {peer_id:?} from {group:?}, but didn't find peer in group peers"
+                                );
+                            }
+                            for group_id in &groups_disconnected {
+                                session
+                                    .listener
+                                    .peer_left_group(&session, *group_id, peer_id);
+                            }
+                        }
+                        session.listener.peer_lost(&session, peer_id);
+                        let removed = session.peers.write().map.remove(peer_id.0);
+                        debug_assert!(removed.is_some(), "Found id but couldn't remove peer?");
+                    }
+                    for id in peers_joined {
+                        session.listener.peer_discovered(&session, id);
+                    }
                 }
                 JavaNotification::GroupStarted {
                     iface_name,
@@ -652,19 +637,11 @@ impl Session {
         Ok(())
     }
 
-    fn find_peer_id_by_dev_addr_in_map(
-        peer_map: &HandleMap<Peer>,
-        dev_addr: &MacAddr,
-    ) -> Option<PeerId> {
-        let own_id = PeerOwnIdentifier::DevAddr(dev_addr.clone().into());
-        Self::find_peer_id_by_own_addr_in_map(peer_map, &own_id)
-    }
-
     fn find_peer_id_by_own_addr_in_map(
         peer_map: &HandleMap<Peer>,
         own_id: &PeerOwnIdentifier,
     ) -> Option<PeerId> {
-        trace!("find_peer_id_by_own_addr({own_id:?})");
+        trace!("find_peer_id_by_own_addr_in_map({own_id:?})");
         for (id, peer) in peer_map.iter_with_handles() {
             trace!(" {:?} -> {:?}", id, peer.identity);
             if peer.identity.matches(own_id) {
@@ -675,7 +652,7 @@ impl Session {
     }
 
     fn find_peer_id_by_own_addr(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
-        Self::find_peer_id_by_own_addr_in_map(&self.peers.read(), own_id)
+        Self::find_peer_id_by_own_addr_in_map(&self.peers.read().map, own_id)
     }
 
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
@@ -718,7 +695,7 @@ impl Session {
     ) {
         const STEP: usize = 2;
         trace!("Session::update_peers({raw:?})");
-        let _session = unsafe { &*(raw as *const Self) };
+        let session = unsafe { &*(raw as *const Self) };
         let len = env.get_array_length(&details).unwrap();
         assert!(len as usize % STEP == 0, "Should have the right step");
         let mut identities = Vec::<PeerIdentity>::with_capacity(len as usize / STEP);
@@ -731,12 +708,13 @@ impl Session {
         for i in (0..len).step_by(STEP) {
             let name = get_string(i);
             let dev_addr = MacAddr::from_str(&get_string(i + 1)).unwrap();
-            identities.push(PeerIdentity {
-                name,
-                dev_addr,
-            });
+            identities.push(PeerIdentity { name, dev_addr });
         }
         trace!(" > identities: {:?}", identities);
+        session
+            .java_notification
+            .send(JavaNotification::UpdateDevices(identities))
+            .unwrap();
     }
 
     /// Signals the group start operation. Android only supports one physical group at a time.
@@ -764,11 +742,14 @@ impl Session {
         let go_ip_address = std::net::IpAddr::from_str(&go_ip_address.to_string_lossy()).unwrap();
 
         trace!("Session::group_joined({is_go:?}, {iface_name:?}, {go_device_address:?}, {go_ip_address:?})");
-        session.java_notification.send(JavaNotification::GroupStarted {
-            is_go,
-            iface_name,
-            go_ip_address,
-        }).unwrap();
+        session
+            .java_notification
+            .send(JavaNotification::GroupStarted {
+                is_go,
+                iface_name,
+                go_ip_address,
+            })
+            .unwrap();
     }
 }
 

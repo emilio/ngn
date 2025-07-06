@@ -9,7 +9,7 @@ set -x;
 
 cd "$(dirname "$0")"
 
-# WPA_SUPPLICANT="wpa_supplicant"
+WPA_SUPPLICANT="wpa_supplicant"
 # WPA_SUPPLICANT="../../hostap/wpa_supplicant/wpa_supplicant -ddd" # For really verbose logging.
 # WPA_SUPPLICANT="../../hostap/wpa_supplicant/wpa_supplicant"
 
