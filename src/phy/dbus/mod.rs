@@ -378,7 +378,9 @@ impl Session {
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
-                while let Ok(control_message) = super::protocol::read_control_message(&mut stream, &address).await {
+                while let Ok(control_message) =
+                    super::protocol::read_control_message(&mut stream, &address).await
+                {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
                         ControlMessage::Associate { id, ports } => {
@@ -387,7 +389,6 @@ impl Session {
                                 continue;
                             };
                             let address = address.ip().clone();
-
                             let is_new_connection = {
                                 let mut groups = session.groups.write();
                                 let Some(group) = groups.get_mut(group_id.0) else {
