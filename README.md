@@ -238,3 +238,4 @@ Gotchas:
       target = "x86_64-linux-android"
   (or so)
  * Getting panic backtraces is not easy (stripped bins? can't look into it r/n)
+ * Android Studio really doesn't like multi-device development, so might still be faster to just develop for Android + Linux, yay?
