@@ -122,12 +122,21 @@ pub fn build(
                         row.set_data::<PeerId>("peer-id", id);
                     }
                     let session = Arc::clone(&session);
-                    row.connect_activated(move |_| {
+                    row.connect_activated(move |row| {
                         let session = session.to_strong();
+                        let connected = row.css_classes().iter().any(|c| c == "connected");
                         super::rt().spawn(async move {
-                            if let Err(e) = session.connect_to_peer(id).await {
-                                error!("Failed to connect to peer {id:?}: {e}");
-                                // TODO: Propagate error to UI
+                            if !connected {
+                                if let Err(e) = session.connect_to_peer(id).await {
+                                    error!("Failed to connect to peer {id:?}: {e}");
+                                    // TODO: Propagate error to UI
+                                }
+                            } else {
+                                let msg = hi_msg();
+                                if let Err(e) = session.message_peer(id, msg.as_bytes()).await {
+                                    error!("Failed to message peer {id:?}: {e}");
+                                    // TODO: Propagate error to UI
+                                }
                             }
                         });
                     });
