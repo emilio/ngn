@@ -102,7 +102,10 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     @Override
     public void onReceive(Context context, Intent intent) {
         final String action = intent.getAction();
-        Log.d(TAG, "BroadcastReceiver.onReceive(" + action + ")");
+        Log.d(TAG, "BroadcastReceiver.onReceive(" + action + "), manager = " + (m_manager != null));
+        if (m_manager == null) {
+            return;
+        }
         switch (Objects.requireNonNull(action)) {
             case WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION: {
                 // UI update to indicate wifi p2p status.
@@ -303,6 +306,11 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         //     highly privileged apps, flag your receiver with RECEIVER_EXPORTED.
         // [1]: https://developer.android.com/develop/background-work/background-tasks/broadcasts#receiving-broadcasts
         ContextCompat.registerReceiver(m_context, this, m_intentFilter, ContextCompat.RECEIVER_EXPORTED);
+    }
+
+    // NOTE: called via the JNI.
+    private void peerMessaged(String name, String mac_addr, byte[] message) {
+        m_listener.messageReceived(new Peer(name, mac_addr), message);
     }
 
     private void initChannel() {

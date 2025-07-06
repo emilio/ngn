@@ -20,7 +20,7 @@ open class NgnListener {
         Log.d(TAG, "connectionStateChanged($state)")
     }
 
-    open fun messageReceived(from: Peer, content: Array<Byte>) {
+    open fun messageReceived(from: Peer, content: ByteArray) {
         Log.d(TAG, "messageReceived($from, $content)")
     }
 }

@@ -138,6 +138,18 @@ pub struct SessionInit<'a> {
     pub _phantom: std::marker::PhantomData<&'a ()>,
 }
 
+macro_rules! try_void {
+    ($expr:expr, $msg:literal) => {
+        match $expr {
+            Ok(r) => r,
+            Err(e) => {
+                error!("{}: {e}", $msg);
+                return;
+            }
+        }
+    };
+}
+
 #[async_trait::async_trait]
 impl P2PSession for Session {
     type InitArgs<'a> = SessionInit<'a>;
@@ -174,14 +186,9 @@ impl P2PSession for Session {
         trace!("Session::discover_peers");
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
-            let mut env = self.vm.attach_current_thread()?;
             let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
-            env.call_method(
-                self.proxy.as_obj(),
-                "(J)V",
-                "discoverPeers",
-                &[tx_long.into()],
-            )?;
+            let mut env = self.vm.attach_current_thread()?;
+            self.call_proxy(&mut *env, "(J)V", "discoverPeers", &[tx_long.into()])?;
         }
         rx.await?
     }
@@ -325,7 +332,9 @@ impl Session {
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
-                while let Ok(control_message) = super::protocol::read_control_message(&mut stream, &address).await {
+                while let Ok(control_message) =
+                    super::protocol::read_control_message(&mut stream, &address).await
+                {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
                         ControlMessage::Associate { id, ports } => {
@@ -440,9 +449,7 @@ impl Session {
                         "Got message from socket: {:?}",
                         String::from_utf8_lossy(&buf)
                     );
-                    session
-                        .listener
-                        .peer_messaged(&session, peer_id, group_id, &buf);
+                    session.peer_messaged(peer_id, group_id, &buf);
                 }
             });
         }
@@ -563,17 +570,18 @@ impl Session {
                         }
                         if seen_ids.len() != peers.mac_to_id.len() {
                             // Some device has been lost.
-                            for (mac, id) in &peers.mac_to_id {
+                            peers.mac_to_id.retain(|mac, id| {
                                 if seen_ids.contains(mac) {
-                                    continue;
+                                    return true;
                                 }
                                 let Some(peer) = peers.map.get_mut(id.0) else {
                                     error!("Store out of sync for {mac:?}, {id:?}!");
-                                    continue;
+                                    return false;
                                 };
                                 trace!("Peer lost: {peer:?}");
                                 peers_lost.push((*id, std::mem::take(&mut peer.groups)));
-                            }
+                                return false;
+                            });
                         }
                     }
                     for (peer_id, groups_disconnected) in peers_lost {
@@ -684,9 +692,58 @@ impl Session {
             _phantom: std::marker::PhantomData,
         };
 
-        // TODO(emilio): Need a listener that proxies to `NgnSessionProxy`.
         let session = Self::new_sync(init, Arc::new(super::LoggerListener::default()));
         Arc::into_raw(session) as jlong
+    }
+
+    fn call_proxy<'local>(
+        &self,
+        env: &mut JNIEnv<'local>,
+        sig: &'static str,
+        method: &'static str,
+        args: &[jni::objects::JValue],
+    ) -> GenericResult<jni::objects::JValueOwned<'local>> {
+        let result = env.call_method(self.proxy.as_obj(), method, sig, args)?;
+        Ok(result)
+    }
+
+    fn peer_messaged(&self, peer_id: PeerId, group_id: GroupId, buf: &[u8]) {
+        self.listener.peer_messaged(self, peer_id, group_id, buf);
+        let mut env = try_void!(self.vm.attach_current_thread(), "Failed to attach vm");
+        let (peer_name, peer_dev_addr) = {
+            let peers = self.peers.read();
+            let Some(peer) = peers.map.get(peer_id.0) else {
+                error!("peer_messaged from gone peer: {peer_id:?} (raced?)");
+                return;
+            };
+            (
+                try_void!(
+                    env.new_string(&peer.identity.name),
+                    "Getting JNI string failed"
+                ),
+                try_void!(
+                    env.new_string(peer.identity.dev_addr.to_string()),
+                    "Getting JNI string failed"
+                ),
+            )
+        };
+        let byte_array = try_void!(
+            env.byte_array_from_slice(buf),
+            "Constructing byte array failed"
+        );
+        try_void!(
+            self.call_proxy(
+                &mut *env,
+                "(Ljava/lang/String;Ljava/lang/String;[B)V",
+                "peerMessaged",
+                &[
+                    (&peer_name).into(),
+                    (&peer_dev_addr).into(),
+                    (&byte_array).into()
+                ]
+            ),
+            "Failed to call peerMessaged"
+        );
     }
 
     /// Breaks the cyclic owner <-> native listener.

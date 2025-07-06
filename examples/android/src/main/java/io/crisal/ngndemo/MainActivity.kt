@@ -94,6 +94,13 @@ class Listener(val activity: MainActivity) : NgnListener() {
         super.peersChanged(peers)
         activity.peers.value = peers
     }
+
+    override fun messageReceived(from: Peer, content: ByteArray) {
+        super.messageReceived(from, content)
+        activity.runOnUiThread {
+            Toast.makeText(activity, "Message from ${from}: ${String(content)}", Toast.LENGTH_LONG).show()
+        }
+    }
 }
 
 class MainActivity : ComponentActivity() {
