@@ -440,6 +440,17 @@ impl Session {
                                 trace!(
                                     "Notifying of new association of {peer_id:?} to {group_id:?}"
                                 );
+                                {
+                                    let mut peers = session.peers.write();
+                                    let Some(peer) = peers.get_mut(peer_id.0) else {
+                                        continue;
+                                    };
+                                    debug_assert!(
+                                        !peer.groups.contains(&group_id),
+                                        "Peer already associated to group?"
+                                    );
+                                    peer.groups.push(group_id);
+                                }
                                 session
                                     .listener
                                     .peer_joined_group(&session, group_id, peer_id);
