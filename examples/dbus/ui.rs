@@ -73,7 +73,7 @@ impl<S: P2PSession> P2PSessionListener<S> for Listener {
 }
 
 fn start_discovery(
-    session: &ngn::phy::dbus::Session,
+    session: &ngn::platform::dbus::Session,
     peer_list_box: &gtk::ListBox,
     button: &gtk::Button,
 ) {
@@ -87,7 +87,7 @@ fn start_discovery(
 pub fn build(
     app: &adw::Application,
     device_name: &str,
-    session: &ngn::phy::dbus::Session,
+    session: &ngn::platform::dbus::Session,
     listener: Arc<Listener>,
     mut ui_event_receiver: tokio::sync::mpsc::UnboundedReceiver<Event>,
 ) {

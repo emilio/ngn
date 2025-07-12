@@ -2,9 +2,9 @@ use log::trace;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-pub mod phy;
-pub mod utils;
+pub mod platform;
 pub mod protocol;
+pub mod utils;
 
 /// A handle for a given peer.
 #[repr(transparent)]

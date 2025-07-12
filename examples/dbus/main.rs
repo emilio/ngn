@@ -28,9 +28,9 @@ async fn create_p2p_session(
     listener: Arc<ui::Listener>,
     interface_name: Option<&str>,
     device_name: &str,
-) -> ngn::GenericResult<Arc<ngn::phy::dbus::Session>> {
-    ngn::phy::dbus::Session::new(
-        ngn::phy::dbus::SessionInit {
+) -> ngn::GenericResult<Arc<ngn::platform::dbus::Session>> {
+    ngn::platform::dbus::Session::new(
+        ngn::platform::dbus::SessionInit {
             interface_name,
             device_name,
             go_intent: 1,
