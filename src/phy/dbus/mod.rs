@@ -8,14 +8,13 @@
 mod store;
 pub mod wpa_supplicant;
 
-use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
-
 use crate::{
-    phy::protocol::{
+    protocol::{
         self, ControlMessage, GroupInfo, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity,
         PeerInfo, PeerOwnIdentifier, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
+    GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
 };
 
 use futures_lite::StreamExt;
@@ -195,15 +194,15 @@ impl P2PSession for Session {
         let own_id = PeerOwnIdentifier::Name(init.device_name.into());
 
         /*
-        let dev_addr = p2pdevice.device_address().await?;
-        trace!("Own P2P device address: {dev_addr:?}");
-        let Some(dev_addr) = utils::to_mac_addr(&dev_addr) else {
-            return Err(trivial_error!(
-                "Expected a valid mac address from
-P2PDevice::device_address()"
-            ));
-        };
-        */
+                let dev_addr = p2pdevice.device_address().await?;
+                trace!("Own P2P device address: {dev_addr:?}");
+                let Some(dev_addr) = utils::to_mac_addr(&dev_addr) else {
+                    return Err(trivial_error!(
+                        "Expected a valid mac address from
+        P2PDevice::device_address()"
+                    ));
+                };
+                */
 
         trace!("Successfully initialized P2P session");
         let session = Arc::new(Self {
@@ -379,7 +378,7 @@ impl Session {
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
                 while let Ok(control_message) =
-                    super::protocol::read_control_message(&mut stream, &address).await
+                    protocol::read_control_message(&mut stream, &address).await
                 {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
@@ -484,10 +483,10 @@ impl Session {
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
                 loop {
-                    let buf = match super::protocol::read_binary_message(&mut stream).await {
+                    let buf = match protocol::read_binary_message(&mut stream).await {
                         Ok(buf) => buf,
                         Err(e) => {
-                            super::protocol::log_error(&*e, &address);
+                            protocol::log_error(&*e, &address);
                             return;
                         }
                     };

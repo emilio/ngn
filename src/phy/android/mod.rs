@@ -5,7 +5,6 @@
 //! like `slaac private`, it will fail to connect to the GO. Other neighbor discovery approaches
 //! could be used in the future.
 
-use super::{GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId};
 use handy::HandleMap;
 use jni::{
     objects::{GlobalRef, JClass, JObject, JObjectArray, JString},
@@ -14,11 +13,12 @@ use jni::{
 use jni_sys::{jboolean, jlong};
 
 use crate::{
-    phy::protocol::{
+    protocol::{
         self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity,
         PeerOwnIdentifier, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
+    GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
 };
 use macaddr::MacAddr;
 
@@ -333,7 +333,7 @@ impl Session {
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
                 while let Ok(control_message) =
-                    super::protocol::read_control_message(&mut stream, &address).await
+                    protocol::read_control_message(&mut stream, &address).await
                 {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
@@ -438,10 +438,10 @@ impl Session {
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
                 loop {
-                    let buf = match super::protocol::read_binary_message(&mut stream).await {
+                    let buf = match protocol::read_binary_message(&mut stream).await {
                         Ok(buf) => buf,
                         Err(e) => {
-                            super::protocol::log_error(&*e, &address);
+                            protocol::log_error(&*e, &address);
                             return;
                         }
                     };
@@ -692,7 +692,7 @@ impl Session {
             _phantom: std::marker::PhantomData,
         };
 
-        let session = Self::new_sync(init, Arc::new(super::LoggerListener::default()));
+        let session = Self::new_sync(init, Arc::new(crate::LoggerListener::default()));
         Arc::into_raw(session) as jlong
     }
 

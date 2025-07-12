@@ -5,7 +5,7 @@ mod ui;
 
 use adw::prelude::*;
 use gtk::gdk::Display;
-use ngn::phy::P2PSession;
+use ngn::P2PSession;
 use std::{
     io::Write,
     sync::{Arc, OnceLock},
@@ -28,7 +28,7 @@ async fn create_p2p_session(
     listener: Arc<ui::Listener>,
     interface_name: Option<&str>,
     device_name: &str,
-) -> ngn::phy::GenericResult<Arc<ngn::phy::dbus::Session>> {
+) -> ngn::GenericResult<Arc<ngn::phy::dbus::Session>> {
     ngn::phy::dbus::Session::new(
         ngn::phy::dbus::SessionInit {
             interface_name,
