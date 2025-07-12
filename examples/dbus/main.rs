@@ -29,10 +29,13 @@ async fn create_p2p_session(
     interface_name: Option<&str>,
     device_name: &str,
 ) -> ngn::GenericResult<Arc<ngn::platform::dbus::Session>> {
+    // TODO: Persist keys and get nickname from user.
+    let identity = ngn::protocol::identity::new_own_id(device_name.to_string())?;
     ngn::platform::dbus::Session::new(
         ngn::platform::dbus::SessionInit {
             interface_name,
             device_name,
+            identity,
             go_intent: 1,
         },
         listener,

@@ -14,8 +14,8 @@ use jni_sys::{jboolean, jlong};
 
 use crate::{
     protocol::{
-        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerOwnIdentifier,
-        PhysiscalPeerIdentity, GO_CONTROL_PORT,
+        self, identity::OwnIdentity, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo,
+        PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -25,7 +25,7 @@ use macaddr::MacAddr;
 use log::{error, trace, warn};
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
     str::FromStr,
     sync::{Arc, OnceLock},
@@ -109,6 +109,7 @@ pub struct Session {
     peers: RwLock<PeerStore>,
     groups: RwLock<HandleMap<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
+    identity: OwnIdentity,
     java_notification: mpsc::UnboundedSender<JavaNotification>,
     /// Task handle to our run loop. Canceled and awaited on drop.
     run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
@@ -135,6 +136,8 @@ pub struct SessionInit<'a> {
     pub p2p_name: String,
     /// Our group owner intent, from 0 to 15.
     pub go_intent: u32,
+    /// Identity for message signing and verification.
+    pub identity: OwnIdentity,
     pub _phantom: std::marker::PhantomData<&'a ()>,
 }
 
@@ -194,7 +197,7 @@ impl P2PSession for Session {
     }
 
     fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().map.get(id.0)?.identity.name.to_owned())
+        Some(self.peers.read().map.get(id.0)?.physical_id.name.to_owned())
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
@@ -204,7 +207,7 @@ impl P2PSession for Session {
             let Some(peer) = peers.map.get(id.0) else {
                 return Err(trivial_error!("Couldn't find peer id"));
             };
-            peer.identity.dev_addr.clone()
+            peer.physical_id.dev_addr.clone()
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
@@ -237,7 +240,7 @@ impl P2PSession for Session {
                 // TODO: Maybe we want to call connect_to_peer automatically?
                 return Err(trivial_error!("Group not found"));
             };
-            let Some(address) = group.peers.get(&id).and_then(|info| info.address.clone()) else {
+            let Some(address) = group.peers.get(&id).map(|info| info.address.clone()) else {
                 return Err(trivial_error!(
                     "Peer doesn't have a link local address (yet?)"
                 ));
@@ -247,14 +250,14 @@ impl P2PSession for Session {
         let socket_addr =
             protocol::peer_to_socket_addr(peer_address.address, scope_id, peer_address.ports.p2p);
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            protocol::send_message_to(&socket_addr, message)
+            protocol::send_message(Some(&self.identity), &socket_addr, message)
         })
         .await
     }
 }
 
 impl Session {
-    fn own_identity(&self) -> PeerOwnIdentifier {
+    fn own_physical_id(&self) -> PeerOwnIdentifier {
         PeerOwnIdentifier::Name(self.name.clone())
     }
 
@@ -267,6 +270,7 @@ impl Session {
             vm: init.vm,
             proxy: init.proxy,
             go_intent: init.go_intent,
+            identity: init.identity,
             listener,
             name: init.p2p_name,
             run_loop_task: RwLock::new(None),
@@ -286,11 +290,7 @@ impl Session {
             return None;
         };
         for (peer_id, info) in &group.peers {
-            if info
-                .address
-                .as_ref()
-                .is_some_and(|addr| addr.address == address.ip())
-            {
+            if info.address.address == address.ip() {
                 return Some(*peer_id);
             }
         }
@@ -309,7 +309,7 @@ impl Session {
         let socket_addr = protocol::peer_to_socket_addr(address, scope_id, control_port);
         let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            protocol::send_message_to(&socket_addr, &msg)
+            protocol::send_message(None, &socket_addr, &msg)
         })
         .await
     }
@@ -337,36 +337,52 @@ impl Session {
                 {
                     trace!("Got control message {control_message:?} on group {group_id:?}");
                     match control_message {
-                        ControlMessage::Associate { id, ports } => {
-                            let Some(peer_id) = session.find_peer_id_by_own_addr(&id) else {
-                                error!("Couldn't associate with {id:?}");
-                                continue;
+                        ControlMessage::Associate {
+                            physical_id,
+                            logical_id,
+                            ports,
+                        } => {
+                            let peer_id = {
+                                let mut peers = session.peers.write();
+                                let mut result = None;
+                                for (id, peer) in peers.map.iter_mut_with_handles() {
+                                    trace!(" {:?} -> {:?}", id, peer.physical_id);
+                                    if peer.physical_id.matches(&physical_id) {
+                                        if peer
+                                            .logical_id
+                                            .as_ref()
+                                            .is_some_and(|i| *i != logical_id)
+                                        {
+                                            error!("Refusing to associate {id:?} with different logical {logical_id:?}");
+                                            break;
+                                        }
+                                        if peer.groups.contains(&group_id) {
+                                            error!("Refusing to associate {id:?} with {group_id:?} again");
+                                            break;
+                                        }
+                                        peer.groups.push(group_id);
+                                        peer.logical_id = Some(logical_id);
+                                        result = Some(PeerId(id));
+                                        break;
+                                    }
+                                }
+                                match result {
+                                    Some(id) => id,
+                                    None => {
+                                        error!("Couldn't associate with {physical_id:?}");
+                                        continue;
+                                    }
+                                }
                             };
                             let address = address.ip().clone();
-                            let is_new_connection = {
+                            {
                                 let mut groups = session.groups.write();
                                 let Some(group) = groups.get_mut(group_id.0) else {
                                     warn!("Group {group_id:?} was torn down?");
                                     continue;
                                 };
                                 let address = PeerAddress { address, ports };
-                                match group.peers.entry(peer_id) {
-                                    Entry::Occupied(mut o) => {
-                                        let info = o.get_mut();
-                                        if info.address.as_ref().is_some_and(|a| *a != address) {
-                                            error!("Forbidding re-association of {address:?}");
-                                            continue;
-                                        }
-                                        o.get_mut().address = Some(address);
-                                        false
-                                    }
-                                    Entry::Vacant(v) => {
-                                        v.insert(PeerGroupInfo {
-                                            address: Some(address),
-                                        });
-                                        true
-                                    }
-                                }
+                                group.peers.insert(peer_id, PeerGroupInfo { address });
                             };
                             if is_go {
                                 // Try to send the association request back to the peer. This
@@ -382,7 +398,8 @@ impl Session {
                                         ports.control,
                                         scope_id,
                                         ControlMessage::Associate {
-                                            id: session.own_identity(),
+                                            physical_id: session.own_physical_id(),
+                                            logical_id: session.identity.to_public(),
                                             ports: own_ports,
                                         },
                                     )
@@ -391,25 +408,10 @@ impl Session {
                                     error!("Failed to send associate message from GO to {peer_id:?}: {e}");
                                 }
                             }
-                            if is_new_connection {
-                                trace!(
-                                    "Notifying of new association of {peer_id:?} to {group_id:?}"
-                                );
-                                {
-                                    let mut peers = session.peers.write();
-                                    let Some(peer) = peers.map.get_mut(peer_id.0) else {
-                                        continue;
-                                    };
-                                    debug_assert!(
-                                        !peer.groups.contains(&group_id),
-                                        "Peer already associated to group?"
-                                    );
-                                    peer.groups.push(group_id);
-                                }
-                                session
-                                    .listener
-                                    .peer_joined_group(&session, group_id, peer_id);
-                            }
+                            trace!("Notifying of new association of {peer_id:?} to {group_id:?}");
+                            session
+                                .listener
+                                .peer_joined_group(&session, group_id, peer_id);
                         }
                     }
                 }
@@ -434,17 +436,27 @@ impl Session {
                 warn!("Got message from {address:?} but couldn't map that to a peer in group {group_id:?}");
                 continue;
             };
+            let Some(peer_identity) = session
+                .peers
+                .read()
+                .map
+                .get(peer_id.0)
+                .and_then(|p| p.logical_id.clone())
+            else {
+                warn!("Got message from {address:?} but haven't received his keys yet");
+                continue;
+            };
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
-                loop {
-                    let buf = match protocol::read_binary_message(&mut stream).await {
-                        Ok(buf) => buf,
-                        Err(e) => {
-                            protocol::log_error(&*e, &address);
-                            return;
-                        }
-                    };
+                while let Ok(buf) = protocol::read_peer_message(
+                    &session.identity,
+                    &peer_identity,
+                    &mut stream,
+                    &address,
+                )
+                .await
+                {
                     trace!(
                         "Got message from socket: {:?}",
                         String::from_utf8_lossy(&buf)
@@ -491,7 +503,8 @@ impl Session {
         trace!(" > go = {is_go}, ports = {my_ports:?}, go_ip = {go_ip:?}");
         if !is_go {
             let control_message = ControlMessage::Associate {
-                id: session.own_identity(),
+                physical_id: session.own_physical_id(),
+                logical_id: session.identity.to_public(),
                 ports: my_ports,
             };
             tokio::try_join!(
@@ -557,11 +570,12 @@ impl Session {
                             seen_ids.insert(dev_addr.clone());
                             let id = peers.mac_to_id.get(&dev_addr).copied();
                             if let Some(id) = id {
-                                trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get_mut(id.0).map(|p| &p.identity));
+                                trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get(id.0).map(|p| &p.physical_id));
                                 continue;
                             }
                             let id = PeerId(peers.map.insert(Peer {
-                                identity,
+                                physical_id: identity,
+                                logical_id: None,
                                 groups: Vec::new(),
                                 data: AndroidPeerData,
                             }));
@@ -656,24 +670,6 @@ impl Session {
         Ok(())
     }
 
-    fn find_peer_id_by_own_addr_in_map(
-        peer_map: &HandleMap<Peer>,
-        own_id: &PeerOwnIdentifier,
-    ) -> Option<PeerId> {
-        trace!("find_peer_id_by_own_addr_in_map({own_id:?})");
-        for (id, peer) in peer_map.iter_with_handles() {
-            trace!(" {:?} -> {:?}", id, peer.identity);
-            if peer.identity.matches(own_id) {
-                return Some(PeerId(id));
-            }
-        }
-        None
-    }
-
-    fn find_peer_id_by_own_addr(&self, own_id: &PeerOwnIdentifier) -> Option<PeerId> {
-        Self::find_peer_id_by_own_addr_in_map(&self.peers.read().map, own_id)
-    }
-
     #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
     extern "C" fn init<'l>(
         mut env: JNIEnv<'l>,
@@ -684,10 +680,15 @@ impl Session {
         let name = env.get_string(&name).unwrap();
         let name = name.to_string_lossy();
         trace!("Session::init({name:?})");
+
+        // TODO(emilio): Get from caller.
+        let identity = protocol::identity::new_own_id(name.to_string()).unwrap();
+
         let init = SessionInit {
             vm: env.get_java_vm().unwrap(),
             proxy: env.new_global_ref(owner).unwrap(),
             p2p_name: name.into(),
+            identity,
             go_intent: 14,
             _phantom: std::marker::PhantomData,
         };
@@ -718,11 +719,11 @@ impl Session {
             };
             (
                 try_void!(
-                    env.new_string(&peer.identity.name),
+                    env.new_string(&peer.physical_id.name),
                     "Getting JNI string failed"
                 ),
                 try_void!(
-                    env.new_string(peer.identity.dev_addr.to_string()),
+                    env.new_string(peer.physical_id.dev_addr.to_string()),
                     "Getting JNI string failed"
                 ),
             )

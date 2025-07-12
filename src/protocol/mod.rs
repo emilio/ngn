@@ -6,12 +6,15 @@
 //!    version: u16
 //!    len: u32
 //! Followed by `len` bytes.
-use super::{GroupId, PeerId};
+use crate::{trivial_error, utils, GenericResult, GroupId, PeerId};
 use bincode::{Decode, Encode};
-use log::{trace, error};
+use log::{error, trace};
 use macaddr::MacAddr;
 use std::{
-    collections::HashMap, io::ErrorKind, net::{IpAddr, SocketAddr, SocketAddrV6}, sync::OnceLock, time::Duration
+    collections::HashMap,
+    net::{IpAddr, SocketAddr, SocketAddrV6},
+    sync::OnceLock,
+    time::Duration,
 };
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
@@ -19,14 +22,16 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{trivial_error, utils};
-
-use super::GenericResult;
+pub mod identity;
+use identity::{MaybeInvalidSignature, OwnIdentity, PeerIdentity};
 
 const MAGIC: u16 = 0xdead;
 const CURRENT_VERSION: u16 = 1;
 
-pub async fn read_binary_message(mut reader: impl AsyncReadExt + Unpin) -> GenericResult<Vec<u8>> {
+async fn read_binary_message(
+    mut reader: impl AsyncReadExt + Unpin,
+    signature: Option<&mut MaybeInvalidSignature>,
+) -> GenericResult<Vec<u8>> {
     let magic = reader.read_u16().await?;
     if magic != MAGIC {
         return Err(trivial_error!("Wrong message magic"));
@@ -35,7 +40,15 @@ pub async fn read_binary_message(mut reader: impl AsyncReadExt + Unpin) -> Gener
     if version != CURRENT_VERSION {
         return Err(trivial_error!("Wrong message version"));
     }
+
     let len = reader.read_u32().await?;
+
+    // TODO(emilio): If zeroing shows up in the profile, we could use MaybeUninit + unsafe to work
+    // around it.
+    if let Some(signature) = signature {
+        reader.read_exact(&mut signature.0).await?;
+    }
+
     let mut buf = vec![];
     if len == 0 {
         return Ok(buf);
@@ -59,24 +72,26 @@ pub async fn read_binary_message(mut reader: impl AsyncReadExt + Unpin) -> Gener
     Ok(buf)
 }
 
-pub async fn read_control_message(reader: impl AsyncReadExt + Unpin, source_address: &SocketAddr) -> GenericResult<ControlMessage> {
-    let buf = match read_binary_message(reader).await {
+/// Control messages are unsigned.
+pub async fn read_control_message(
+    reader: impl AsyncReadExt + Unpin,
+    source_address: &SocketAddr,
+) -> GenericResult<ControlMessage> {
+    let buf = match read_binary_message(reader, None).await {
         Ok(buf) => buf,
         Err(e) => {
             log_error(&*e, source_address);
             return Err(e);
         }
     };
-    let (control_message, len) = match bincode::decode_from_slice::<ControlMessage, _>(
-        &buf,
-        bincode::config::standard(),
-    ) {
-        Ok(r) => r,
-        Err(e) => {
-            error!("Failed to decode binary control message {buf:?} {e:?}");
-            return Err(e.into());
-        }
-    };
+    let (control_message, len) =
+        match bincode::decode_from_slice::<ControlMessage, _>(&buf, bincode::config::standard()) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Failed to decode binary control message {buf:?} {e:?}");
+                return Err(e.into());
+            }
+        };
     if len != buf.len() {
         error!("Unexpected decoded message length {} vs {}", len, buf.len());
         return Err(trivial_error!("Invalid message length"));
@@ -84,18 +99,42 @@ pub async fn read_control_message(reader: impl AsyncReadExt + Unpin, source_addr
     Ok(control_message)
 }
 
+// TODO: In the future use OwnIdentity to also decrypt, not only check the signature from the peer.
+pub async fn read_peer_message(
+    _: &OwnIdentity,
+    id: &PeerIdentity,
+    reader: impl AsyncReadExt + Unpin,
+    source_address: &SocketAddr,
+) -> GenericResult<Vec<u8>> {
+    // TODO: If zeroing somehow shows up it can be optimized via MaybeUninit + unsafe.
+    let mut signature = MaybeInvalidSignature([0; identity::SIGNATURE_LEN]);
+    let buf = match read_binary_message(reader, Some(&mut signature)).await {
+        Ok(buf) => buf,
+        Err(e) => {
+            log_error(&*e, source_address);
+            return Err(e);
+        }
+    };
+    if let Err(e) = identity::verify(&id.key, &signature, &buf) {
+        log_error(&*e, source_address);
+        return Err(e);
+    }
+    Ok(buf)
+}
+
 pub fn log_error(e: &(dyn std::error::Error + 'static), source_address: &SocketAddr) {
     if let Some(io) = e.downcast_ref::<std::io::Error>() {
-        if io.kind() == ErrorKind::UnexpectedEof {
+        if io.kind() == io::ErrorKind::UnexpectedEof {
             return trace!("Got EOF from {source_address:?}");
         }
     }
     error!("Unexpected error from {source_address:?}: {e}");
 }
 
-pub async fn write_binary_message(
+async fn write_binary_message(
     mut writer: impl AsyncWriteExt + Unpin,
     msg: &[u8],
+    signing_key: Option<&identity::KeyPair>,
 ) -> GenericResult<()> {
     let Ok(len) = u32::try_from(msg.len()) else {
         return Err(trivial_error!("Huge length for binary message"));
@@ -105,9 +144,12 @@ pub async fn write_binary_message(
     writer.write_u16(MAGIC).await?;
     writer.write_u16(CURRENT_VERSION).await?;
     writer.write_u32(len).await?;
+    if let Some(k) = signing_key {
+        let signature = identity::sign(k, msg);
+        writer.write_all(signature.as_ref()).await?;
+    }
     // Write the message.
     writer.write_all(msg).await?;
-
     Ok(())
 }
 
@@ -189,7 +231,10 @@ pub enum PeerOwnIdentifier {
 #[derive(Debug)]
 pub struct PeerInfo<BackendData> {
     /// Identity of this peer. Note that even tho the mac address is indeed
-    pub identity: PhysiscalPeerIdentity,
+    pub physical_id: PhysiscalPeerIdentity,
+    /// The logical identity to be able to verify messages from a given peer. Unknown until
+    /// association.
+    pub logical_id: Option<PeerIdentity>,
     /// Current list of groups the peer is connected to.
     pub groups: Vec<GroupId>,
     /// Back-end specific data.
@@ -212,24 +257,44 @@ pub fn peer_to_socket_addr(addr: IpAddr, scope_id: u32, port: u16) -> SocketAddr
     }
 }
 
-/// Send a binary message to a given peer address.
-pub async fn send_message_to(addr: &SocketAddr, message: &[u8]) -> GenericResult<()> {
-    trace!("send_message_to({addr:?}, {})", message.len());
+/// Send a signed (if with own identity) or unsigned (otherwise) message to a given peer address.
+pub async fn send_message(
+    from: Option<&OwnIdentity>,
+    to: &SocketAddr,
+    message: &[u8],
+) -> GenericResult<()> {
+    trace!("send_message_to({to:?}, {})", message.len());
     let mut stream =
-        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(addr)).await? {
+        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(to)).await? {
             Ok(stream) => stream,
             Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
         };
-    super::protocol::write_binary_message(&mut stream, message).await?;
-    Ok(())
+    let key_pair = from.map(|f| &f.key_pair);
+    write_binary_message(&mut stream, message, key_pair).await
+}
+
+/// Read a signed message from a given peer address.
+pub async fn recv_message(
+    from: Option<&OwnIdentity>,
+    to: &SocketAddr,
+    message: &[u8],
+) -> GenericResult<()> {
+    trace!("send_message_to({to:?}, {})", message.len());
+    let mut stream =
+        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(to)).await? {
+            Ok(stream) => stream,
+            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
+        };
+    let key_pair = from.map(|f| &f.key_pair);
+    write_binary_message(&mut stream, message, key_pair).await
 }
 
 /// Per group association for a given peer.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct PeerGroupInfo {
     /// The link-local address of this peer, and the ports it uses to listen to connections, if
     /// known.
-    pub address: Option<PeerAddress>,
+    pub address: PeerAddress,
 }
 
 /// Information about the current group.
@@ -275,7 +340,9 @@ pub enum ControlMessage {
     /// listening to.
     Associate {
         /// The identifier used to associate back to the peer.
-        id: PeerOwnIdentifier,
+        physical_id: PeerOwnIdentifier,
+        /// The logical identity of our peer.
+        logical_id: PeerIdentity,
         /// The ports the peer is listening to.
         ports: P2pPorts,
     },
