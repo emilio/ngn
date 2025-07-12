@@ -14,8 +14,8 @@ use jni_sys::{jboolean, jlong};
 
 use crate::{
     protocol::{
-        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity,
-        PeerOwnIdentifier, GO_CONTROL_PORT,
+        self, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo, PeerOwnIdentifier,
+        PhysiscalPeerIdentity, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -51,7 +51,7 @@ fn rt() -> &'static tokio::runtime::Runtime {
 #[derive(Debug)]
 enum JavaNotification {
     FindStopped,
-    UpdateDevices(Vec<PeerIdentity>),
+    UpdateDevices(Vec<PhysiscalPeerIdentity>),
     // InvitationReceived,
     // InvitationResult,
     // WpsFailed,
@@ -766,7 +766,7 @@ impl Session {
         let session = unsafe { &*(raw as *const Self) };
         let len = env.get_array_length(&details).unwrap();
         assert!(len as usize % STEP == 0, "Should have the right step");
-        let mut identities = Vec::<PeerIdentity>::with_capacity(len as usize / STEP);
+        let mut identities = Vec::<PhysiscalPeerIdentity>::with_capacity(len as usize / STEP);
         let mut get_string = |i| {
             let string = env.get_object_array_element(&details, i).unwrap();
             let string = unsafe { JString::from_raw(string.as_raw()) };
@@ -776,7 +776,7 @@ impl Session {
         for i in (0..len).step_by(STEP) {
             let name = get_string(i);
             let dev_addr = MacAddr::from_str(&get_string(i + 1)).unwrap();
-            identities.push(PeerIdentity { name, dev_addr });
+            identities.push(PhysiscalPeerIdentity { name, dev_addr });
         }
         trace!(" > identities: {:?}", identities);
         session

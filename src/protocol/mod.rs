@@ -149,7 +149,7 @@ impl DecodableMacAddr {
 
 /// ID of a given device.
 #[derive(Debug, Clone)]
-pub struct PeerIdentity {
+pub struct PhysiscalPeerIdentity {
     /// Name of the device.
     pub name: String,
     /// Device address of the P2P device. Note this is _not_ usable to get a link-local
@@ -157,7 +157,7 @@ pub struct PeerIdentity {
     pub dev_addr: MacAddr,
 }
 
-impl PeerIdentity {
+impl PhysiscalPeerIdentity {
     /// Whether this peer matches its self-reported own identifier.
     pub fn matches(&self, own_id: &PeerOwnIdentifier) -> bool {
         match own_id {
@@ -189,7 +189,7 @@ pub enum PeerOwnIdentifier {
 #[derive(Debug)]
 pub struct PeerInfo<BackendData> {
     /// Identity of this peer. Note that even tho the mac address is indeed
-    pub identity: PeerIdentity,
+    pub identity: PhysiscalPeerIdentity,
     /// Current list of groups the peer is connected to.
     pub groups: Vec<GroupId>,
     /// Back-end specific data.

@@ -10,8 +10,8 @@ pub mod wpa_supplicant;
 
 use crate::{
     protocol::{
-        self, ControlMessage, GroupInfo, P2pPorts, PeerAddress, PeerGroupInfo, PeerIdentity,
-        PeerInfo, PeerOwnIdentifier, GO_CONTROL_PORT,
+        self, ControlMessage, GroupInfo, P2pPorts, PeerAddress, PeerGroupInfo, PeerInfo,
+        PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -753,7 +753,7 @@ impl Session {
                         continue;
                     };
 
-                    let identity = PeerIdentity { name, dev_addr };
+                    let identity = PhysiscalPeerIdentity { name, dev_addr };
 
                     let handle = {
                         let mut peers = session.peers.write();
