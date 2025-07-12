@@ -236,6 +236,10 @@ Gotchas:
  * Getting editor integration requires local config like a .cargo/config.toml file with:
       [build]
       target = "x86_64-linux-android"
+
+      [env] # For ring build, obviously replace with the relevant NDK dir or what not.
+      TARGET_CC = "clang" # Or something like "/home/emilio/Android/Sdk/ndk/29.0.13599879/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+
   (or so)
  * Getting panic backtraces is not easy (stripped bins? can't look into it r/n)
  * Android Studio really doesn't like multi-device development, so might still be faster to just develop for Android + Linux, yay?
