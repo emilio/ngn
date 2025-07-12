@@ -22,6 +22,8 @@ parking_lot = "0.12"
 handy = "0.1"
 # Random number generation.
 rand = "0.9"
+# Signing and verification
+ring = "0.17"
 # Binary serialization.
 bincode = "2"
 bincode_derive = "2"
