@@ -243,3 +243,19 @@ Gotchas:
   (or so)
  * Getting panic backtraces is not easy (stripped bins? can't look into it r/n)
  * Android Studio really doesn't like multi-device development, so might still be faster to just develop for Android + Linux, yay?
+
+# Crypto
+
+ * Need to do some research on what algorithms to use for encryption.
+ * Lots of very good options, see also https://cryptography.rs:
+   * RSA: https://github.com/RustCrypto/RSA
+   * AES GCM: https://docs.rs/aes-gcm/latest/aes_gcm/ / https://docs.rs/ring/0.17.14/ring/aead/static.AES_256_GCM.html
+   * chacha20 poly1305: https://docs.rs/ring/0.17.14/ring/aead/static.CHACHA20_POLY1305.html
+
+Seems most AEAD algorithms fail in presence of repeated nonces, so probably
+worth combining randomness with a counter or so:
+
+ * https://docs.rs/ring/0.17.14/src/ring/aead.rs.html#43-47
+ * https://csrc.nist.gov/publications/detail/sp/800-38d/final
+ * https://docs.rs/aead/0.5.2/src/aead/lib.rs.html#151
+ * https://docs.rs/aead/0.5.2/src/aead/stream.rs.html#437
