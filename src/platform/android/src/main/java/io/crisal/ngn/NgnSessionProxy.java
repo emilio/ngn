@@ -249,7 +249,9 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
     public boolean init(String nickname, Runnable onInit) {
         if (m_manager != null) {
-            return false; // Already initialized or initializing
+            // Already initialized or initializing, try to refresh the peer list.
+            discoverPeers();
+            return false;
         }
         m_manager = m_context.getSystemService(WifiP2pManager.class);
         m_onInit = onInit;
