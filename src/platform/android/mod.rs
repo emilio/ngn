@@ -7,7 +7,7 @@
 
 use handy::HandleMap;
 use jni::{
-    objects::{GlobalRef, JClass, JObject, JObjectArray, JString},
+    objects::{GlobalRef, JByteArray, JClass, JObject, JObjectArray, JString},
     JNIEnv, JavaVM,
 };
 use jni_sys::{jboolean, jlong};
@@ -27,6 +27,7 @@ use parking_lot::RwLock;
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV6},
+    ptr,
     str::FromStr,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -98,6 +99,21 @@ impl PeerStore {
         self.map.clear();
         self.mac_to_id.clear();
     }
+}
+
+fn peer_identity_to_jni<'local>(
+    env: &mut JNIEnv<'local>,
+    id: &PeerIdentity,
+) -> GenericResult<(JString<'local>, JString<'local>, JString<'local>)> {
+    Ok((
+        env.new_string(&id.physical.name)?,
+        env.new_string(id.physical.dev_addr.to_string())?,
+        if let Some(ref id) = id.logical {
+            env.new_string(id.to_string())?
+        } else {
+            unsafe { JString::from_raw(ptr::null_mut()) }
+        },
+    ))
 }
 
 /// Global state for a P2P session.
@@ -422,6 +438,7 @@ impl Session {
                             session
                                 .listener
                                 .peer_joined_group(&session, group_id, peer_id);
+                            session.peers_changed();
                         }
                     }
                 }
@@ -607,6 +624,7 @@ impl Session {
                             });
                         }
                     }
+                    let changed = !peers_lost.is_empty() || !peers_joined.is_empty();
                     for (peer_id, groups_disconnected) in peers_lost {
                         // Remove the peer for any outstanding groups before notifying the listener
                         // of the peer being lost.
@@ -635,6 +653,9 @@ impl Session {
                     }
                     for id in peers_joined {
                         session.listener.peer_discovered(&session, id);
+                    }
+                    if changed {
+                        session.peers_changed();
                     }
                 }
                 JavaNotification::GroupStarted {
@@ -684,19 +705,22 @@ impl Session {
         mut env: JNIEnv<'l>,
         _class: JClass<'l>,
         owner: JObject<'l>,
-        name: JString<'l>,
+        device_name: JString<'l>,
+        nickname: JString<'l>,
     ) -> jlong {
-        let name = env.get_string(&name).unwrap();
-        let name = name.to_string_lossy();
-        trace!("Session::init({name:?})");
+        let device_name = env.get_string(&device_name).unwrap();
+        let device_name = device_name.to_string_lossy();
+        let nickname = env.get_string(&nickname).unwrap();
+        let nickname = nickname.to_string_lossy();
+        trace!("Session::init({device_name:?}, {nickname:?})");
 
-        // TODO(emilio): Get from caller.
-        let identity = protocol::identity::new_own_id(name.to_string()).unwrap();
+        // TODO(emilio): Get keys from caller.
+        let identity = protocol::identity::new_own_id(nickname.into_owned()).unwrap();
 
         let init = SessionInit {
             vm: env.get_java_vm().unwrap(),
             proxy: env.new_global_ref(owner).unwrap(),
-            p2p_name: name.into(),
+            p2p_name: device_name.into(),
             identity,
             _phantom: std::marker::PhantomData,
         };
@@ -716,43 +740,86 @@ impl Session {
         Ok(result)
     }
 
+    /// Resolves a java on-result function with a given boolean value.
+    fn resolve_result(&self, on_result: &JObject<'_>, success: bool) -> GenericResult<()> {
+        if on_result.is_null() {
+            return Ok(());
+        }
+        let mut env = self.vm.attach_current_thread()?;
+        self.call_proxy(
+            &mut env,
+            "(Ljava/lang/Object;Z)V",
+            "resolveResult",
+            &[on_result.into(), success.into()],
+        )?;
+        Ok(())
+    }
+
+    fn peers_changed(&self) {
+        if let Err(e) = self.peers_changed_internal() {
+            error!("Failed to broadcast peer changes to java: {e}");
+        }
+    }
+
+    fn peers_changed_internal(&self) -> GenericResult<()> {
+        const ENTRIES: i32 = 3;
+        let mut env = self.vm.attach_current_thread()?;
+        let peers = self.all_peers();
+        let arr =
+            env.new_object_array(peers.len() as i32 * ENTRIES, "java/lang/String", unsafe {
+                JString::from_raw(ptr::null_mut())
+            })?;
+        let mut i = 0;
+        for (_id, id) in peers {
+            let (peer_name, peer_dev_addr, peer_logical_id) = peer_identity_to_jni(&mut env, &id)?;
+            env.set_object_array_element(&arr, i, peer_name)?;
+            env.set_object_array_element(&arr, i + 1, peer_dev_addr)?;
+            env.set_object_array_element(&arr, i + 2, peer_logical_id)?;
+            i += ENTRIES;
+        }
+        self.call_proxy(
+            &mut env,
+            "([Ljava/lang/String;)V",
+            "notifyPeersChanged",
+            &[(&arr).into()],
+        )?;
+        Ok(())
+    }
+
     fn peer_messaged(&self, peer_id: PeerId, group_id: GroupId, buf: &[u8]) {
+        if let Err(e) = self.peer_messaged_internal(peer_id, group_id, buf) {
+            error!("Failed to broadcast peer message to java: {e}");
+        }
+    }
+
+    fn peer_messaged_internal(
+        &self,
+        peer_id: PeerId,
+        group_id: GroupId,
+        buf: &[u8],
+    ) -> GenericResult<()> {
         self.listener.peer_messaged(self, peer_id, group_id, buf);
-        let mut env = try_void!(self.vm.attach_current_thread(), "Failed to attach vm");
-        let (peer_name, peer_dev_addr) = {
+        let mut env = self.vm.attach_current_thread()?;
+        let (peer_name, peer_dev_addr, peer_logical_id) = {
             let peers = self.peers.read();
             let Some(peer) = peers.map.get(peer_id.0) else {
-                error!("peer_messaged from gone peer: {peer_id:?} (raced?)");
-                return;
+                return Err(trivial_error!("peer_messaged from gone peer"));
             };
-            (
-                try_void!(
-                    env.new_string(&peer.identity.physical.name),
-                    "Getting JNI string failed"
-                ),
-                try_void!(
-                    env.new_string(peer.identity.physical.dev_addr.to_string()),
-                    "Getting JNI string failed"
-                ),
-            )
+            peer_identity_to_jni(&mut env, &peer.identity)?
         };
-        let byte_array = try_void!(
-            env.byte_array_from_slice(buf),
-            "Constructing byte array failed"
-        );
-        try_void!(
-            self.call_proxy(
-                &mut env,
-                "(Ljava/lang/String;Ljava/lang/String;[B)V",
-                "peerMessaged",
-                &[
-                    (&peer_name).into(),
-                    (&peer_dev_addr).into(),
-                    (&byte_array).into()
-                ]
-            ),
-            "Failed to call peerMessaged"
-        );
+        let byte_array = env.byte_array_from_slice(buf)?;
+        self.call_proxy(
+            &mut env,
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[B)V",
+            "peerMessaged",
+            &[
+                (&peer_name).into(),
+                (&peer_dev_addr).into(),
+                (&peer_logical_id).into(),
+                (&byte_array).into(),
+            ],
+        )?;
+        Ok(())
     }
 
     /// Breaks the cyclic owner <-> native listener.
@@ -827,6 +894,61 @@ impl Session {
                 go_ip_address,
             })
             .unwrap();
+    }
+
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1message_1peer"]
+    extern "C" fn message_peer<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        raw: jlong,
+        peer_physical_address: JString<'l>,
+        message: JByteArray<'l>,
+        on_result: JObject<'l>,
+    ) {
+        let session = unsafe { &*(raw as *const Self) };
+        let peer_physical_address = env.get_string(&peer_physical_address).unwrap();
+        let peer_physical_address =
+            MacAddr::from_str(&peer_physical_address.to_str().unwrap()).unwrap();
+        let message = {
+            let msg_len = env.get_array_length(&message).unwrap();
+            let mut buf = vec![0u8; msg_len as usize];
+            {
+                // SAFETY: u8 and i8 share representation, it's just more convenient for us to use
+                // u8.
+                let signed_buf = unsafe {
+                    std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut i8, buf.len())
+                };
+                env.get_byte_array_region(&message, 0, signed_buf).unwrap();
+            }
+            buf
+        };
+        let peer_id = session
+            .peers
+            .read()
+            .mac_to_id
+            .get(&peer_physical_address)
+            .copied();
+        let Some(peer_id) = peer_id else {
+            error!("Failed to find peer {peer_physical_address} to message");
+            try_void!(
+                session.resolve_result(&on_result, false),
+                "Failed to resolve on_result"
+            );
+            return;
+        };
+        let session = session.to_strong();
+        let on_result = env.new_global_ref(on_result).unwrap();
+        rt().spawn(async move {
+            let result = session.message_peer(peer_id, &message).await;
+            let success = result.is_ok();
+            if let Err(e) = result {
+                error!("Failed to message {peer_id:?}: {e}");
+            }
+            try_void!(
+                session.resolve_result(on_result.as_obj(), success),
+                "Failed to resolve on_result"
+            );
+        });
     }
 }
 

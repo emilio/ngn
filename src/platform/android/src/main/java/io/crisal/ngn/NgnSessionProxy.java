@@ -86,9 +86,11 @@ class ActionListenerFunctionAdapter implements WifiP2pManager.ActionListener {
 public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager.ChannelListener, WifiP2pManager.GroupInfoListener, WifiP2pManager.ConnectionInfoListener, WifiP2pManager.PeerListListener, WifiP2pManager.DeviceInfoListener {
     public static String TAG = "NgnSessionProxy";
 
-    private static native long ngn_session_init(NgnSessionProxy session, String name);
+    private static native long ngn_session_init(NgnSessionProxy session, String device_name, String nick_name);
 
     private static native long ngn_session_update_peers(long native_session, String[] peer_details);
+
+    private static native void ngn_session_message_peer(long native_session, String destination_address, byte[] message, Object on_result);
 
     private static native void ngn_session_drop(long native_session);
 
@@ -199,8 +201,8 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     public void onPeersAvailable(WifiP2pDeviceList peers) {
         Log.d(TAG, "onPeersAvailable: " + peers);
         Toast.makeText(m_context, "P2P peers changed: " + peers, Toast.LENGTH_LONG).show();
-        m_peerList = peers;
-        peerListChanged();
+        m_physicalPeerList = peers;
+        physicalPeerListChanged();
     }
 
     // DeviceInfoListener
@@ -212,7 +214,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         }
 
         Log.d(TAG, "onDeviceInfoAvailable(" + wifiP2pDevice.deviceName + "): " + wifiP2pDevice);
-        m_native = ngn_session_init(this, wifiP2pDevice.deviceName);
+        m_native = ngn_session_init(this, wifiP2pDevice.deviceName, m_nickName);
         Log.d(TAG, "onDeviceInfoAvailable got session: " + m_native);
 
         if (m_onInit != null) {
@@ -220,7 +222,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
             m_onInit = null;
             onInit.run();
         }
-        peerListChanged();
+        physicalPeerListChanged();
     }
 
     static {
@@ -245,12 +247,13 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
      * @param onInit Runnable, what to run once we're initialized.
      */
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
-    public boolean init(Runnable onInit) {
+    public boolean init(String nickname, Runnable onInit) {
         if (m_manager != null) {
             return false; // Already initialized or initializing
         }
         m_manager = m_context.getSystemService(WifiP2pManager.class);
         m_onInit = onInit;
+        m_nickName = nickname;
         assert m_manager != null;
         initChannel();
         onResume();
@@ -258,21 +261,18 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         return true;
     }
 
-    public void peerListChanged() {
-        if (m_peerList == null || m_native == 0) {
+    public void physicalPeerListChanged() {
+        if (m_physicalPeerList == null || m_native == 0) {
             return;
         }
-        final Collection<WifiP2pDevice> deviceList = m_peerList.getDeviceList();
-        final ArrayList<Peer> peerArrayList = new ArrayList<>();
+        final Collection<WifiP2pDevice> deviceList = m_physicalPeerList.getDeviceList();
         final String[] array = new String[deviceList.size() * 2];
         int i = 0;
         for (WifiP2pDevice device : deviceList) {
             array[i++] = device.deviceName;
             array[i++] = device.deviceAddress;
-            peerArrayList.add(new Peer(device.deviceName, device.deviceAddress));
         }
         ngn_session_update_peers(m_native, array);
-        m_listener.peersChanged(peerArrayList);
     }
 
     @Override
@@ -282,7 +282,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         }
         m_manager = null;
         m_channel = null;
-        m_peerList = null;
+        m_physicalPeerList = null;
         ngn_session_drop(m_native);
         m_native = 0;
     }
@@ -309,8 +309,23 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     }
 
     // NOTE: called via the JNI.
-    private void peerMessaged(String name, String mac_addr, byte[] message) {
-        m_listener.messageReceived(new Peer(name, mac_addr), message);
+    private void resolveResult(Object onResult, boolean success) {
+        //noinspection unchecked
+        ((Function<Boolean, Void>) onResult).apply(success);
+    }
+
+    // NOTE: called via the JNI.
+    private void notifyPeersChanged(String[] peerDetails) {
+        final ArrayList<Peer> peerArrayList = new ArrayList<>();
+        for (int i = 0; i < peerDetails.length; i += 3) {
+            peerArrayList.add(new Peer(peerDetails[i], peerDetails[i + 1], peerDetails[i + 2]));
+        }
+        m_listener.peersChanged(peerArrayList);
+    }
+
+    // NOTE: called via the JNI.
+    private void peerMessaged(String name, String mac_addr, String logicalId, byte[] message) {
+        m_listener.messageReceived(new Peer(name, mac_addr, logicalId), message);
     }
 
     private void initChannel() {
@@ -365,14 +380,28 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         m_manager.connect(m_channel, builder.build(), aListener);
     }
 
+    @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
+    public void messagePeer(String aMacAddress, byte[] aMessage, Function<Boolean, Void> onResult) {
+        Log.d(TAG, "messagePeer(" + aMacAddress + ", " + aMessage.length + ")");
+        if (m_native == 0) {
+            Log.w(TAG, "Tried to message " + aMacAddress + "Without an active session");
+            if (onResult != null) {
+                onResult.apply(false);
+            }
+            return;
+        }
+        ngn_session_message_peer(m_native, aMacAddress, aMessage, onResult);
+    }
+
     Context m_context;
     WifiP2pManager m_manager;
     WifiP2pManager.Channel m_channel;
     IntentFilter m_intentFilter;
     Runnable m_onInit;
-    WifiP2pDeviceList m_peerList;
+    WifiP2pDeviceList m_physicalPeerList;
     WifiP2pInfo m_connectionInfo;
     WifiP2pGroup m_currentGroup;
     long m_native = 0;
     NgnListener m_listener;
+    String m_nickName;
 }

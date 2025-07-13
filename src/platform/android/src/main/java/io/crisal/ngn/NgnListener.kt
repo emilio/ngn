@@ -3,7 +3,7 @@ package io.crisal.ngn
 import android.util.Log
 
 const val TAG: String = "NgnListener";
-data class Peer(val name: String, val deviceAddress: String /* , val id: ULong */);
+data class Peer(val name: String, val deviceAddress: String, val logicalId: String?);
 
 enum class ConnectionState {
     Disconnected,
