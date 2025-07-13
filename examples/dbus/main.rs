@@ -5,43 +5,6 @@ mod ui;
 
 use adw::prelude::*;
 use gtk::gdk::Display;
-use ngn::P2PSession;
-use std::{
-    io::Write,
-    sync::{Arc, OnceLock},
-};
-
-pub fn rt() -> &'static tokio::runtime::Runtime {
-    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    RT.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            // 10 MiB should be plenty even for debug builds.
-            .thread_stack_size(10 * 1024 * 1024)
-            .worker_threads(3)
-            .enable_all()
-            .build()
-            .unwrap()
-    })
-}
-
-async fn create_p2p_session(
-    listener: Arc<ui::Listener>,
-    interface_name: Option<&str>,
-    device_name: &str,
-) -> ngn::GenericResult<Arc<ngn::platform::dbus::Session>> {
-    // TODO: Persist keys and get nickname from user.
-    let identity = ngn::protocol::identity::new_own_id(device_name.to_string())?;
-    ngn::platform::dbus::Session::new(
-        ngn::platform::dbus::SessionInit {
-            interface_name,
-            device_name,
-            identity,
-            go_intent: 1,
-        },
-        listener,
-    )
-    .await
-}
 
 fn load_css() {
     // Load the CSS file and add it to the provider
@@ -70,6 +33,7 @@ fn main() -> gtk::glib::ExitCode {
     let iface_for_logging = interface_name.clone().unwrap_or_default();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
         .format(move |buf, record| {
+            use std::io::Write;
             write!(buf, "[{}", record.level())?;
             if let Some(f) = record.file() {
                 write!(buf, " {}:{}", f, record.line().unwrap_or(0))?;
@@ -81,44 +45,19 @@ fn main() -> gtk::glib::ExitCode {
         })
         .init();
 
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    let listener = Arc::new(ui::Listener::new(tx));
-    let rt = rt();
-    let session = rt.block_on(async {
-        create_p2p_session(
-            Arc::clone(&listener),
-            interface_name.as_deref(),
-            &device_name,
-        )
-        .await
-        .unwrap()
-    });
-
     let app = adw::Application::builder()
         .application_id(ui::APP_ID)
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
 
     app.connect_startup(|_| load_css());
-
-    let session_clone = Arc::clone(&session);
-
-    // HACK: We're a non-unique application, so we don't expect multiple
-    // activate signals, and we can just take the receiver once. If we were to
-    // use a "unique" application, we should probably create a P2P session per
-    // activate signal, or something along those lines?
-    let rx = std::cell::RefCell::new(Some(rx));
     app.connect_activate(move |app| {
         ui::build(
             app,
             &device_name,
-            &session_clone,
-            Arc::clone(&listener),
-            rx.borrow_mut().take().unwrap(),
+            interface_name.as_deref(),
         )
     });
-
-    rt.spawn(async move { session.wait().await });
 
     app.run()
 }

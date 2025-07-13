@@ -45,7 +45,7 @@ log-panics = "2.1" # features = ["with-backtrace"] would be nice but doesn't qui
 # UI toolkit
 [dev-dependencies]
 gtk = { version = "0.9.6", package = "gtk4", features = ["v4_18"] }
-adw = { version = "0.7.2", package = "libadwaita" }
+adw = { version = "0.7.2", package = "libadwaita", features = ["v1_4"] }
 
 [[example]]
 name = "dbus"

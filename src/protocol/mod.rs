@@ -23,7 +23,7 @@ use tokio::{
 };
 
 pub mod identity;
-use identity::{MaybeInvalidSignature, OwnIdentity, PeerIdentity};
+use identity::{LogicalPeerIdentity, MaybeInvalidSignature, OwnIdentity};
 
 const MAGIC: u16 = 0xdead;
 const CURRENT_VERSION: u16 = 1;
@@ -102,7 +102,7 @@ pub async fn read_control_message(
 // TODO: In the future use OwnIdentity to also decrypt, not only check the signature from the peer.
 pub async fn read_peer_message(
     _: &OwnIdentity,
-    id: &PeerIdentity,
+    id: &LogicalPeerIdentity,
     reader: impl AsyncReadExt + Unpin,
     source_address: &SocketAddr,
 ) -> GenericResult<Vec<u8>> {
@@ -209,6 +209,25 @@ impl PhysiscalPeerIdentity {
     }
 }
 
+impl std::fmt::Display for PhysiscalPeerIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::fmt::Write;
+        f.write_str(&self.name)?;
+        f.write_str(" (")?;
+        self.dev_addr.fmt(f)?;
+        f.write_char(')')
+    }
+}
+
+/// A peer identity at the current time
+#[derive(Debug, Clone)]
+pub struct PeerIdentity {
+    pub physical: PhysiscalPeerIdentity,
+    /// The logical identity to be able to verify messages from a given peer. Unknown until
+    /// association.
+    pub logical: Option<LogicalPeerIdentity>,
+}
+
 /// A single self-reported identifier for a peer. Note that ideally this should always be the mac
 /// address, but:
 ///
@@ -230,11 +249,8 @@ pub enum PeerOwnIdentifier {
 /// Information from a peer (other than ourselves).
 #[derive(Debug)]
 pub struct PeerInfo<BackendData> {
-    /// Identity of this peer. Note that even tho the mac address is indeed
-    pub physical_id: PhysiscalPeerIdentity,
-    /// The logical identity to be able to verify messages from a given peer. Unknown until
-    /// association.
-    pub logical_id: Option<PeerIdentity>,
+    /// Identity of this peer.
+    pub identity: PeerIdentity,
     /// Current list of groups the peer is connected to.
     pub groups: Vec<GroupId>,
     /// Back-end specific data.
@@ -342,7 +358,7 @@ pub enum ControlMessage {
         /// The identifier used to associate back to the peer.
         physical_id: PeerOwnIdentifier,
         /// The logical identity of our peer.
-        logical_id: PeerIdentity,
+        logical_id: LogicalPeerIdentity,
         /// The ports the peer is listening to.
         ports: P2pPorts,
     },

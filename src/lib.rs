@@ -18,9 +18,7 @@ pub struct GroupId(pub(crate) handy::Handle);
 
 pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     fn peer_discovered(&self, sess: &S, peer_id: PeerId) {
-        trace!("Listener::peer_discovered({peer_id:?})");
-        let peer_name = sess.peer_name(peer_id);
-        trace!(" > name: {peer_name:?}");
+        trace!("Listener::peer_discovered({peer_id:?}): {:?}", sess.peer_identity(peer_id));
     }
 
     fn peer_lost(&self, _: &S, peer_id: PeerId) {
@@ -107,7 +105,13 @@ pub trait P2PSession: Sized + Debug + Send + Sync + 'static {
 
     /// Returns a name to a given peer. Guaranteed to exist in between peer_discovered and
     /// peer_lost.
-    fn peer_name(&self, id: PeerId) -> Option<String>;
+    fn peer_identity(&self, id: PeerId) -> Option<protocol::PeerIdentity>;
+
+    /// Returns the currently-known information from all known peers.
+    fn all_peers(&self) -> Vec<(PeerId, protocol::PeerIdentity)>;
+
+    /// Returns the current device's identity
+    fn own_identity(&self) -> &protocol::identity::OwnIdentity;
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()>;
 

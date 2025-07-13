@@ -15,7 +15,7 @@ use jni_sys::{jboolean, jlong};
 use crate::{
     protocol::{
         self, identity::OwnIdentity, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo,
-        PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
+        PeerIdentity, PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -50,7 +50,7 @@ fn rt() -> &'static tokio::runtime::Runtime {
 /// Representation of system messages that we need to handle
 #[derive(Debug)]
 enum JavaNotification {
-    FindStopped,
+    // FindStopped,
     UpdateDevices(Vec<PhysiscalPeerIdentity>),
     // InvitationReceived,
     // InvitationResult,
@@ -105,7 +105,6 @@ impl PeerStore {
 pub struct Session {
     vm: JavaVM,
     proxy: GlobalRef,
-    go_intent: u32,
     peers: RwLock<PeerStore>,
     groups: RwLock<HandleMap<Group>>,
     listener: Arc<dyn P2PSessionListener<Self>>,
@@ -134,8 +133,6 @@ pub struct SessionInit<'a> {
     pub proxy: GlobalRef,
     /// Name for our P2P operations.
     pub p2p_name: String,
-    /// Our group owner intent, from 0 to 15.
-    pub go_intent: u32,
     /// Identity for message signing and verification.
     pub identity: OwnIdentity,
     pub _phantom: std::marker::PhantomData<&'a ()>,
@@ -196,8 +193,21 @@ impl P2PSession for Session {
         rx.await?
     }
 
-    fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().map.get(id.0)?.physical_id.name.to_owned())
+    fn peer_identity(&self, id: PeerId) -> Option<PeerIdentity> {
+        Some(self.peers.read().map.get(id.0)?.identity.clone())
+    }
+
+    fn all_peers(&self) -> Vec<(PeerId, PeerIdentity)> {
+        self.peers
+            .read()
+            .map
+            .iter_with_handles()
+            .map(|(id, info)| (PeerId(id), info.identity.clone()))
+            .collect()
+    }
+
+    fn own_identity(&self) -> &OwnIdentity {
+        &self.identity
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
@@ -207,7 +217,7 @@ impl P2PSession for Session {
             let Some(peer) = peers.map.get(id.0) else {
                 return Err(trivial_error!("Couldn't find peer id"));
             };
-            peer.physical_id.dev_addr.clone()
+            peer.identity.physical.dev_addr
         };
         let (tx, rx) = tokio::sync::oneshot::channel();
         {
@@ -269,7 +279,6 @@ impl Session {
             java_notification: tx,
             vm: init.vm,
             proxy: init.proxy,
-            go_intent: init.go_intent,
             identity: init.identity,
             listener,
             name: init.p2p_name,
@@ -346,10 +355,11 @@ impl Session {
                                 let mut peers = session.peers.write();
                                 let mut result = None;
                                 for (id, peer) in peers.map.iter_mut_with_handles() {
-                                    trace!(" {:?} -> {:?}", id, peer.physical_id);
-                                    if peer.physical_id.matches(&physical_id) {
+                                    trace!(" {:?} -> {:?}", id, peer.identity.logical);
+                                    if peer.identity.physical.matches(&physical_id) {
                                         if peer
-                                            .logical_id
+                                            .identity
+                                            .logical
                                             .as_ref()
                                             .is_some_and(|i| *i != logical_id)
                                         {
@@ -361,7 +371,7 @@ impl Session {
                                             break;
                                         }
                                         peer.groups.push(group_id);
-                                        peer.logical_id = Some(logical_id);
+                                        peer.identity.logical = Some(logical_id);
                                         result = Some(PeerId(id));
                                         break;
                                     }
@@ -441,7 +451,7 @@ impl Session {
                 .read()
                 .map
                 .get(peer_id.0)
-                .and_then(|p| p.logical_id.clone())
+                .and_then(|p| p.identity.logical.clone())
             else {
                 warn!("Got message from {address:?} but haven't received his keys yet");
                 continue;
@@ -555,9 +565,6 @@ impl Session {
         while let Some(message) = rx.recv().await {
             trace!("run_loop: {:?}", message);
             match message {
-                JavaNotification::FindStopped => {
-                    session.listener.peer_discovery_stopped(&session);
-                }
                 JavaNotification::UpdateDevices(identities) => {
                     let mut peers_joined = vec![];
                     let mut peers_lost = vec![];
@@ -570,12 +577,14 @@ impl Session {
                             seen_ids.insert(dev_addr.clone());
                             let id = peers.mac_to_id.get(&dev_addr).copied();
                             if let Some(id) = id {
-                                trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get(id.0).map(|p| &p.physical_id));
+                                trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get(id.0).map(|p| &p.identity));
                                 continue;
                             }
                             let id = PeerId(peers.map.insert(Peer {
-                                physical_id: identity,
-                                logical_id: None,
+                                identity: PeerIdentity {
+                                    physical: identity,
+                                    logical: None,
+                                },
                                 groups: Vec::new(),
                                 data: AndroidPeerData,
                             }));
@@ -689,7 +698,6 @@ impl Session {
             proxy: env.new_global_ref(owner).unwrap(),
             p2p_name: name.into(),
             identity,
-            go_intent: 14,
             _phantom: std::marker::PhantomData,
         };
 
@@ -719,11 +727,11 @@ impl Session {
             };
             (
                 try_void!(
-                    env.new_string(&peer.physical_id.name),
+                    env.new_string(&peer.identity.physical.name),
                     "Getting JNI string failed"
                 ),
                 try_void!(
-                    env.new_string(peer.physical_id.dev_addr.to_string()),
+                    env.new_string(peer.identity.physical.dev_addr.to_string()),
                     "Getting JNI string failed"
                 ),
             )

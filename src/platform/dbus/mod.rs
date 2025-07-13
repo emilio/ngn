@@ -11,7 +11,8 @@ pub mod wpa_supplicant;
 use crate::{
     protocol::{
         self, identity::OwnIdentity, ControlMessage, GroupInfo, P2pPorts, PeerAddress,
-        PeerGroupInfo, PeerInfo, PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
+        PeerGroupInfo, PeerIdentity, PeerInfo, PeerOwnIdentifier, PhysiscalPeerIdentity,
+        GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -254,8 +255,20 @@ impl P2PSession for Session {
         Ok(())
     }
 
-    fn peer_name(&self, id: PeerId) -> Option<String> {
-        Some(self.peers.read().get(id.0)?.physical_id.name.to_owned())
+    fn peer_identity(&self, id: PeerId) -> Option<PeerIdentity> {
+        Some(self.peers.read().get(id.0)?.identity.clone())
+    }
+
+    fn all_peers(&self) -> Vec<(PeerId, PeerIdentity)> {
+        self.peers
+            .read()
+            .iter_with_handles()
+            .map(|(id, info)| (PeerId(id), info.identity.clone()))
+            .collect()
+    }
+
+    fn own_identity(&self) -> &OwnIdentity {
+        &self.identity
     }
 
     async fn connect_to_peer(&self, id: PeerId) -> GenericResult<()> {
@@ -380,10 +393,11 @@ impl Session {
                                 let mut peers = session.peers.write();
                                 let mut result = None;
                                 for (id, peer) in peers.iter_mut_with_handles() {
-                                    trace!(" {:?} -> {:?}", id, peer.physical_id);
-                                    if peer.physical_id.matches(&physical_id) {
+                                    trace!(" {:?} -> {:?}", id, peer.identity.physical);
+                                    if peer.identity.physical.matches(&physical_id) {
                                         if peer
-                                            .logical_id
+                                            .identity
+                                            .logical
                                             .as_ref()
                                             .is_some_and(|i| *i != logical_id)
                                         {
@@ -395,7 +409,7 @@ impl Session {
                                             break;
                                         }
                                         peer.groups.push(group_id);
-                                        peer.logical_id = Some(logical_id);
+                                        peer.identity.logical = Some(logical_id);
                                         result = Some(PeerId(id));
                                         break;
                                     }
@@ -474,7 +488,7 @@ impl Session {
                 .peers
                 .read()
                 .get(peer_id.0)
-                .and_then(|p| p.logical_id.clone())
+                .and_then(|p| p.identity.logical.clone())
             else {
                 warn!("Got message from {address:?} but haven't received his keys yet");
                 continue;
@@ -727,20 +741,22 @@ impl Session {
                         continue;
                     };
 
-                    let identity = PhysiscalPeerIdentity { name, dev_addr };
+                    let physical_identity = PhysiscalPeerIdentity { name, dev_addr };
 
                     let handle = {
                         let mut peers = session.peers.write();
                         if let Some(id) = peers.id_by_path(&path) {
                             let existing = peers.get_mut(id).expect("DBUS store out of sync");
-                            trace!("Peer was already registered (from previous scan?) with identity {:?}", existing.physical_id);
+                            trace!("Peer was already registered (from previous scan?) with identity {:?}", existing.identity);
                             // TODO(emilio): Consider not notifying? Kinda puts the burden of
                             // preserving peer list to the parent.
                             id
                         } else {
                             peers.insert(Peer {
-                                physical_id: identity,
-                                logical_id: None,
+                                identity: PeerIdentity {
+                                    physical: physical_identity,
+                                    logical: None,
+                                },
                                 groups: Vec::new(),
                                 data: DbusPeerData {
                                     proxy,
@@ -1013,12 +1029,12 @@ impl Session {
                     let peer = Value::from(peer_path);
                     let method = Value::from(WPS_METHOD);
                     let go_intent = Value::from(session.go_intent as i32);
-                    // let auto_join = Value::from(true);
+                    let auto_join = Value::from(true);
                     tokio::spawn(async move {
                         let mut connect_args = HashMap::new();
                         connect_args.insert("peer", &peer);
                         connect_args.insert("wps_method", &method);
-                        // connect_args.insert("auto_join", &auto_join);
+                        connect_args.insert("auto_join", &auto_join);
                         connect_args.insert("go_intent", &go_intent);
                         session.p2pdevice.connect(connect_args).await
                     });
@@ -1134,7 +1150,7 @@ impl Session {
                             error!("Can't found {peer_object} in peers map");
                             continue;
                         };
-                        peer.physical_id.dev_addr
+                        peer.identity.physical.dev_addr
                     };
 
                     let go_groups = {
@@ -1191,10 +1207,10 @@ impl Session {
         let mut args = HashMap::default();
         let method = Value::from(WPS_METHOD);
         let go_intent = Value::from(self.go_intent as i32);
-        // let auto_join = Value::from(true);
+        let auto_join = Value::from(true);
         let peer_path = Value::from(peer_path);
         args.insert("peer", &peer_path);
-        // args.insert("auto_join", &auto_join);
+        args.insert("auto_join", &auto_join);
         args.insert("wps_method", &method);
         args.insert("go_intent", &go_intent);
         match self.p2pdevice.connect(args).await {
