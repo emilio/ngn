@@ -188,7 +188,7 @@ impl P2PSession for Session {
         {
             let tx_long = Box::leak(Box::new(tx)) as *mut _ as jlong;
             let mut env = self.vm.attach_current_thread()?;
-            self.call_proxy(&mut *env, "(J)V", "discoverPeers", &[tx_long.into()])?;
+            self.call_proxy(&mut env, "(J)V", "discoverPeers", &[tx_long.into()])?;
         }
         rx.await?
     }
@@ -304,7 +304,7 @@ impl Session {
             }
         }
         error!("Address {address:?} couldn't be mapped to a known peer in the group!");
-        return None;
+        None
     }
 
     async fn send_control_message(
@@ -384,7 +384,7 @@ impl Session {
                                     }
                                 }
                             };
-                            let address = address.ip().clone();
+                            let address = address.ip();
                             {
                                 let mut groups = session.groups.write();
                                 let Some(group) = groups.get_mut(group_id.0) else {
@@ -573,8 +573,8 @@ impl Session {
                         let peers = &mut *peers;
                         let mut seen_ids = HashSet::new();
                         for identity in identities {
-                            let dev_addr = identity.dev_addr.clone();
-                            seen_ids.insert(dev_addr.clone());
+                            let dev_addr = identity.dev_addr;
+                            seen_ids.insert(dev_addr);
                             let id = peers.mac_to_id.get(&dev_addr).copied();
                             if let Some(id) = id {
                                 trace!("Peer was already registered (from previous scan?) with identity {:?}", peers.map.get(id.0).map(|p| &p.identity));
@@ -603,7 +603,7 @@ impl Session {
                                 };
                                 trace!("Peer lost: {peer:?}");
                                 peers_lost.push((*id, std::mem::take(&mut peer.groups)));
-                                return false;
+                                false
                             });
                         }
                     }
@@ -701,7 +701,7 @@ impl Session {
             _phantom: std::marker::PhantomData,
         };
 
-        let session = Self::new_sync(init, Arc::new(crate::LoggerListener::default()));
+        let session = Self::new_sync(init, Arc::new(crate::LoggerListener));
         Arc::into_raw(session) as jlong
     }
 
@@ -742,7 +742,7 @@ impl Session {
         );
         try_void!(
             self.call_proxy(
-                &mut *env,
+                &mut env,
                 "(Ljava/lang/String;Ljava/lang/String;[B)V",
                 "peerMessaged",
                 &[

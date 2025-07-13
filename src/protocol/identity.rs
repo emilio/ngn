@@ -55,7 +55,7 @@ fn display_logical_id(nickname: &str, key: &[u8], f: &mut std::fmt::Formatter) -
 impl std::fmt::Display for OwnIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ring::signature::KeyPair;
-        display_logical_id(&self.nickname, &self.key_pair.public_key().as_ref(), f)
+        display_logical_id(&self.nickname, self.key_pair.public_key().as_ref(), f)
     }
 }
 

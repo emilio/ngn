@@ -32,7 +32,7 @@ use tokio::{self, net::TcpListener, task::JoinHandle};
 use wpa_supplicant::{p2pdevice::P2PDeviceProxy, wpa_supplicant::WpaSupplicantProxy};
 use zbus::zvariant::{OwnedObjectPath, Value};
 
-const WPS_METHOD: &'static str = "pbc";
+const WPS_METHOD: &str = "pbc";
 
 #[derive(Debug)]
 struct DbusPeerData {
@@ -300,7 +300,7 @@ impl P2PSession for Session {
                 // TODO: Maybe we want to call connect_to_peer automatically?
                 return Err(trivial_error!("Group not found"));
             };
-            let Some(ref info) = group.peers.get(&id) else {
+            let Some(info) = group.peers.get(&id) else {
                 return Err(trivial_error!(
                     "Peer doesn't have a link local address (yet?)"
                 ));
@@ -342,7 +342,7 @@ impl Session {
             }
         }
         error!("Address {address:?} couldn't be mapped to a known peer in the group!");
-        return None;
+        None
     }
 
     async fn send_control_message(
@@ -422,7 +422,7 @@ impl Session {
                                     }
                                 }
                             };
-                            let address = address.ip().clone();
+                            let address = address.ip();
                             {
                                 let mut groups = session.groups.write();
                                 let Some(group) = groups.get_mut(group_id.0) else {
@@ -600,7 +600,7 @@ impl Session {
                     trace!("Peer left {group_id:?}: {peer:?}");
                     let peer_id = {
                         let mut peers = session.peers.write();
-                        let Some(peer_id) = peers.id_by_path(&peer) else {
+                        let Some(peer_id) = peers.id_by_path(peer) else {
                             error!("couldn't find peer {peer:?}");
                             continue;
                         };
@@ -778,7 +778,7 @@ impl Session {
 
                     let (peer_id, groups_disconnected) = {
                         let mut peers = session.peers.write();
-                        let id = match peers.id_by_path(&peer_path) {
+                        let id = match peers.id_by_path(peer_path) {
                             Some(id) => id,
                             None => {
                                 error!("Got unknown device lost {peer_path}");
@@ -851,7 +851,7 @@ impl Session {
                     let props = args.properties();
                     trace!("Group started: {props:?}");
                     let iface_path = match props.get("interface_object") {
-                        Some(&Value::ObjectPath(ref o)) => o.to_owned(),
+                        Some(Value::ObjectPath(o)) => o.to_owned(),
                         other => {
                             error!("Expected an interface object path, got {other:?}");
                             continue;
@@ -972,7 +972,7 @@ impl Session {
 
                     if !peers_lost.is_empty() {
                         let mut peers = session.peers.write();
-                        for (peer_id, _info) in &peers_lost {
+                        for peer_id in peers_lost.keys() {
                             let peer = match peers.get_mut(peer_id.0) {
                                 Some(g) => g,
                                 None => {
@@ -990,7 +990,7 @@ impl Session {
                             peer.groups.remove(index);
                         }
 
-                        for (peer_id, _info) in &peers_lost {
+                        for peer_id in peers_lost.keys() {
                             session
                                 .listener
                                 .peer_left_group(&session, group_id, *peer_id);
@@ -1018,7 +1018,7 @@ impl Session {
                     trace!("GO negotiation failed: {props:?}, retrying connection");
 
                     let peer_path = match props.get("peer_object") {
-                        Some(&Value::ObjectPath(ref o)) => o.to_owned(),
+                        Some(Value::ObjectPath(o)) => o.to_owned(),
                         other => {
                             error!("Expected an peer object path, got {other:?}");
                             continue;
@@ -1146,7 +1146,7 @@ impl Session {
 
                     let peer_dev_addr = {
                         let peers = session.peers.read();
-                        let Some(peer) = peers.get_by_path(&peer_object) else {
+                        let Some(peer) = peers.get_by_path(peer_object) else {
                             error!("Can't found {peer_object} in peers map");
                             continue;
                         };

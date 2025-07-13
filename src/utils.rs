@@ -80,7 +80,7 @@ pub fn to_mac_addr(buff: &[u8]) -> Option<MacAddr> {
 fn to_eui64(mac_addr: &MacAddr) -> [u8; 8] {
     let a = match mac_addr {
         MacAddr::V6(a) => a.as_bytes(),
-        MacAddr::V8(a) => return a.clone().into_array(),
+        MacAddr::V8(a) => return (*a).into_array(),
     };
     [a[0], a[1], a[2], 0xff, 0xfe, a[3], a[4], a[5]]
 }
