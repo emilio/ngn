@@ -1,5 +1,7 @@
 use adw::prelude::*;
-use ngn::{GroupId, LoggerListener, P2PSession, P2PSessionListener, PeerId, protocol::PeerIdentity};
+use ngn::{
+    protocol::PeerIdentity, GroupId, LoggerListener, P2PSession, P2PSessionListener, PeerId,
+};
 use rand::Rng;
 use std::sync::{Arc, OnceLock};
 

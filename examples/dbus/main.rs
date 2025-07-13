@@ -51,13 +51,7 @@ fn main() -> gtk::glib::ExitCode {
         .build();
 
     app.connect_startup(|_| load_css());
-    app.connect_activate(move |app| {
-        ui::build(
-            app,
-            &device_name,
-            interface_name.as_deref(),
-        )
-    });
+    app.connect_activate(move |app| ui::build(app, &device_name, interface_name.as_deref()));
 
     app.run()
 }

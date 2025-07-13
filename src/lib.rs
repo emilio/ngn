@@ -18,7 +18,10 @@ pub struct GroupId(pub(crate) handy::Handle);
 
 pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
     fn peer_discovered(&self, sess: &S, peer_id: PeerId) {
-        trace!("Listener::peer_discovered({peer_id:?}): {:?}", sess.peer_identity(peer_id));
+        trace!(
+            "Listener::peer_discovered({peer_id:?}): {:?}",
+            sess.peer_identity(peer_id)
+        );
     }
 
     fn peer_lost(&self, _: &S, peer_id: PeerId) {
