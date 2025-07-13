@@ -17,6 +17,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -40,10 +41,14 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -127,7 +132,6 @@ class MainActivity : ComponentActivity() {
     private val m_proxy = NgnSessionProxy(this, Listener(this));
 
     val peers = mutableStateOf<List<Peer>>(arrayListOf())
-    val nickname = mutableStateOf("")
     val identity: MutableState<String?> = mutableStateOf(null);
 
     @SuppressLint("MissingPermission")
@@ -138,7 +142,7 @@ class MainActivity : ComponentActivity() {
                     this, "App can't function without the required permissions", Toast.LENGTH_SHORT
                 ).show();
             } else {
-                m_proxy.init(nickname.value) {
+                m_proxy.init(identity.value!!) {
                     Log.d(TAG, "Proxy initialized successfully")
                 }
             }
@@ -170,7 +174,6 @@ class MainActivity : ComponentActivity() {
         m_proxy.onPause();
     }
 
-    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -179,58 +182,66 @@ class MainActivity : ComponentActivity() {
             NgnDemoTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(), topBar = {
-                        TopAppBar(title = {
-                            if (identity.value == null) {
-                                TextField(
-                                    nickname.value,
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        errorContainerColor = Color.Transparent
-                                    ),
-                                    onValueChange = {
-                                        nickname.value = it
-                                    },
-                                    placeholder = {
-                                        Text("Nickname")
-                                    },
-                                )
-                            } else {
-                                Text(identity.value!!)
-                            }
-                        }, actions = {
-                            IconButton(onClick = {
+                        var nickname by rememberSaveable { mutableStateOf("") };
+                        TopAppBar(
+                            modifier = Modifier.shadow(elevation = 10.dp),
+                            title = {
                                 if (identity.value == null) {
-                                    if (nickname.value == "") {
-                                        return@IconButton
-                                    }
-                                    identity.value = nickname.value;
-                                }
-                                @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
-                                if (hasAllRequiredPermissions(this@MainActivity)) {
-                                    m_proxy.init(identity.value!!) {
-                                        Log.d(TAG, "Initialized m_proxy from button");
-                                        m_proxy.discoverPeers { success ->
-                                            Log.d(TAG, "Initiated discovery: $success")
-                                            null
-                                        };
-                                    }
-                                } else {
-                                    m_permissionRequest.launch(REQUIRED_PERMISSIONS);
-                                }
-                            }) {
-                                if (identity.value == null) {
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.ArrowForward,
-                                        contentDescription = "Start"
+                                    TextField(
+                                        nickname,
+                                        modifier = Modifier.fillMaxSize(),
+                                        singleLine = true,
+                                        colors = TextFieldDefaults.colors(
+                                            focusedIndicatorColor = Color.Transparent,
+                                            unfocusedIndicatorColor = Color.Transparent,
+                                            disabledIndicatorColor = Color.Transparent,
+                                            errorIndicatorColor = Color.Transparent,
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent,
+                                            disabledContainerColor = Color.Transparent,
+                                            errorContainerColor = Color.Transparent
+                                        ),
+                                        onValueChange = {
+                                            nickname = it
+                                        },
+                                        placeholder = {
+                                            Text("Nickname")
+                                        },
                                     )
                                 } else {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                                    Text(identity.value!!)
                                 }
-                            }
-                        })
+                            }, actions = {
+                                IconButton(onClick = {
+                                    if (identity.value == null) {
+                                        if (nickname == "") {
+                                            return@IconButton
+                                        }
+                                        identity.value = nickname;
+                                    }
+                                    @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
+                                    if (hasAllRequiredPermissions(this@MainActivity)) {
+                                        m_proxy.init(identity.value!!) {
+                                            Log.d(TAG, "Initialized m_proxy from button");
+                                            m_proxy.discoverPeers { success ->
+                                                Log.d(TAG, "Initiated discovery: $success")
+                                                null
+                                            };
+                                        }
+                                    } else {
+                                        m_permissionRequest.launch(REQUIRED_PERMISSIONS);
+                                    }
+                                }) {
+                                    if (identity.value == null) {
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.ArrowForward,
+                                            contentDescription = "Start"
+                                        )
+                                    } else {
+                                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                                    }
+                                }
+                            })
                     }) { innerPadding ->
                     LazyColumn(modifier = Modifier.padding(innerPadding)) {
                         if (peers.value.isEmpty()) {
