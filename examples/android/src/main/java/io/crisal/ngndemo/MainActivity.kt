@@ -1,6 +1,6 @@
 package io.crisal.ngndemo
 
-
+import android.Manifest
 import androidx.compose.foundation.lazy.items
 import android.annotation.SuppressLint
 import android.content.Context
@@ -14,12 +14,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +48,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
 import kotlinx.serialization.Serializable
 import io.crisal.ngn.NgnListener
 import io.crisal.ngn.NgnSessionProxy
@@ -54,12 +58,12 @@ import io.crisal.ngndemo.ui.theme.NgnDemoTheme
 
 
 val REQUIRED_PERMISSIONS = arrayOf(
-    android.Manifest.permission.ACCESS_WIFI_STATE,
-    android.Manifest.permission.CHANGE_WIFI_STATE,
-    android.Manifest.permission.NEARBY_WIFI_DEVICES,
-    android.Manifest.permission.ACCESS_FINE_LOCATION,
-    android.Manifest.permission.ACCESS_COARSE_LOCATION,
-);
+    Manifest.permission.ACCESS_WIFI_STATE,
+    Manifest.permission.CHANGE_WIFI_STATE,
+    Manifest.permission.NEARBY_WIFI_DEVICES,
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+)
 
 fun hasAllRequiredPermissions(context: Context): Boolean {
     return REQUIRED_PERMISSIONS.all {
@@ -67,10 +71,10 @@ fun hasAllRequiredPermissions(context: Context): Boolean {
     }
 }
 
-const val TAG = "MainActivity";
+const val TAG = "MainActivity"
 
 @Composable
-fun PeerInfoRow(peer: Peer, activity: MainActivity) {
+fun PeerInfoRow(peer: Peer, activity: MainActivity, onGameStart: (Peer) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -78,11 +82,11 @@ fun PeerInfoRow(peer: Peer, activity: MainActivity) {
                 if (peer.logicalId == null) {
                     activity.connectTo(peer)
                 } else {
-                    activity.sendMessage(peer, "foobar".toByteArray())
+                    onGameStart(peer)
                 }
             }) {
         Text(buildAnnotatedString {
-            val physicalId = "${peer.name} (${peer.deviceAddress})";
+            val physicalId = "${peer.name} (${peer.deviceAddress})"
             if (peer.logicalId != null) {
                 append(peer.logicalId!!)
                 append("\n")
@@ -120,55 +124,68 @@ class Listener(val activity: MainActivity) : NgnListener() {
 object PeerList
 
 @Serializable
-object Game
+data class Game(val peerId: String)
 
 class MainActivity : ComponentActivity() {
-    private val m_proxy = NgnSessionProxy(this, Listener(this));
+    private val proxy = NgnSessionProxy(this, Listener(this))
 
     val peers = mutableStateOf<List<Peer>>(arrayListOf())
-    val identity: MutableState<String?> = mutableStateOf(null);
+    val identity: MutableState<String?> = mutableStateOf(null)
 
     @SuppressLint("MissingPermission")
-    private val m_permissionRequest =
+    private val permissionRequest =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { isGranted ->
             if (isGranted.any { entry -> !entry.value }) {
                 Toast.makeText(
                     this, "App can't function without the required permissions", Toast.LENGTH_SHORT
-                ).show();
+                ).show()
             } else {
-                m_proxy.init(identity.value!!) {
-                    Log.d(TAG, "Proxy initialized successfully")
-                }
+                this.initProxy(requestPermissions = false)
             }
         }
 
+    // We're literally checking, if needed, but the linter is not smart enough it seems?
+    @SuppressLint("MissingPermission")
+    fun initProxy(requestPermissions: Boolean) {
+        if (requestPermissions && !hasAllRequiredPermissions(this)) {
+            permissionRequest.launch(REQUIRED_PERMISSIONS)
+            return
+        }
+        proxy.init(identity.value!!) {
+            Log.d(TAG, "Proxy initialized successfully")
+            proxy.discoverPeers { success ->
+                Log.d(TAG, "Initiated discovery: $success")
+                null
+            }
+        }
+    }
+
     @SuppressLint("MissingPermission")
     fun connectTo(peer: Peer) {
-        m_proxy.connectToPeer(peer.deviceAddress) { success ->
-            Log.d(TAG, "connected to $peer: $success");
+        proxy.connectToPeer(peer.deviceAddress) { success ->
+            Log.d(TAG, "connected to $peer: $success")
             null
-        };
+        }
     }
 
     @SuppressLint("MissingPermission")
     fun sendMessage(peer: Peer, message: ByteArray) {
-        m_proxy.messagePeer(peer.deviceAddress, message) { success ->
-            Log.d(TAG, "sent message to $peer: $success");
+        proxy.messagePeer(peer.deviceAddress, message) { success ->
+            Log.d(TAG, "sent message to $peer: $success")
             null
         }
     }
 
     override fun onResume() {
         super.onResume()
-        m_proxy.onResume();
+        proxy.onResume()
     }
 
     override fun onPause() {
         super.onPause()
-        m_proxy.onPause();
+        proxy.onPause()
     }
 
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -176,80 +193,125 @@ class MainActivity : ComponentActivity() {
         setContent {
             NgnDemoTheme {
                 val navController = rememberNavController()
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(), topBar = {
-                        var nickname by rememberSaveable { mutableStateOf("") };
-                        TopAppBar(modifier = Modifier.shadow(elevation = 10.dp), title = {
-                            if (identity.value == null) {
-                                TextField(
-                                    nickname,
-                                    modifier = Modifier.fillMaxSize(),
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        disabledIndicatorColor = Color.Transparent,
-                                        errorIndicatorColor = Color.Transparent,
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        errorContainerColor = Color.Transparent
-                                    ),
-                                    onValueChange = {
-                                        nickname = it
-                                    },
-                                    placeholder = {
-                                        Text("Nickname")
-                                    },
-                                )
-                            } else {
-                                Text(identity.value!!)
-                            }
-                        }, actions = {
-                            IconButton(onClick = {
-                                if (identity.value == null) {
-                                    if (nickname == "") {
-                                        return@IconButton
-                                    }
-                                    identity.value = nickname;
-                                }
-                                @SuppressLint("MissingPermission") // We're literally checking, but the linter is not smart enough it seems?
-                                if (hasAllRequiredPermissions(this@MainActivity)) {
-                                    m_proxy.init(identity.value!!) {
-                                        Log.d(TAG, "Initialized m_proxy from button");
-                                        m_proxy.discoverPeers { success ->
-                                            Log.d(TAG, "Initiated discovery: $success")
-                                            null
-                                        };
-                                    }
-                                } else {
-                                    m_permissionRequest.launch(REQUIRED_PERMISSIONS);
-                                }
-                            }) {
-                                if (identity.value == null) {
-                                    Icon(
-                                        Icons.AutoMirrored.Rounded.ArrowForward,
-                                        contentDescription = "Start"
-                                    )
-                                } else {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
-                                }
-                            }
+                NavHost(navController = navController, startDestination = PeerList) {
+                    composable<PeerList> {
+                        PeerListPage(this@MainActivity, onGameStart = { peer ->
+                            navController.navigate(route = Game(peer.deviceAddress))
                         })
-                    }) { innerPadding ->
-                    LazyColumn(modifier = Modifier.padding(innerPadding)) {
-                        if (peers.value.isEmpty()) {
-                            item {
-                                PlaceholderRow("Peers will show up here")
-                            }
-                        } else {
-                            items(peers.value) { peer ->
-                                PeerInfoRow(peer, this@MainActivity)
-                            }
-                        }
+                    }
+                    composable<Game> {
+                        GamePage(this@MainActivity, onBack = {
+                            navController.navigate(route = PeerList)
+                        })
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun Page(
+    activity: MainActivity,
+    topBarReadOnly: Boolean,
+    onBack: (() -> Unit)? = null,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(), topBar = {
+            TopBar(
+                activity,
+                topBarReadOnly,
+                onBack,
+            )
+        }, content = content
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun TopBar(activity: MainActivity, readOnly: Boolean, onBack: (() -> Unit)? = null) {
+    var nickname by rememberSaveable { mutableStateOf("") }
+    TopAppBar(modifier = Modifier.shadow(elevation = 10.dp), title = {
+        if (activity.identity.value == null) {
+            TextField(
+                nickname,
+                onValueChange = {
+                    nickname = it
+                },
+                modifier = Modifier.fillMaxSize(),
+                readOnly = readOnly,
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                    errorIndicatorColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    errorContainerColor = Color.Transparent
+                ),
+                placeholder = {
+                    Text("Nickname")
+                })
+        } else {
+            Text(activity.identity.value!!)
+        }
+    }, navigationIcon = {
+        if (onBack != null) {
+            IconButton(onClick = { onBack() }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Localized description"
+                )
+            }
+        }
+    }, actions = {
+        if (readOnly) {
+            return@TopAppBar
+        }
+        IconButton(onClick = {
+            if (nickname == "") {
+                return@IconButton
+            }
+            if (activity.identity.value == null) {
+                activity.identity.value = nickname
+            }
+            activity.initProxy(requestPermissions = true)
+        }) {
+            if (activity.identity.value == null) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Start"
+                )
+            } else {
+                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+            }
+        }
+    })
+}
+
+@Composable
+fun PeerListPage(activity: MainActivity, onGameStart: (Peer) -> Unit) {
+    Page(activity, topBarReadOnly = false) { innerPadding ->
+        LazyColumn(modifier = Modifier.padding(innerPadding)) {
+            if (activity.peers.value.isEmpty()) {
+                item {
+                    PlaceholderRow("Peers will show up here")
+                }
+            } else {
+                items(activity.peers.value) { peer ->
+                    PeerInfoRow(peer, activity, onGameStart)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+fun GamePage(activity: MainActivity, onBack: () -> Unit) {
+    Page(activity, topBarReadOnly = true, onBack = onBack) {
+        Text("Game page here!")
     }
 }
