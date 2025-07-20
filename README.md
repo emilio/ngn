@@ -259,3 +259,9 @@ worth combining randomness with a counter or so:
  * https://csrc.nist.gov/publications/detail/sp/800-38d/final
  * https://docs.rs/aead/0.5.2/src/aead/lib.rs.html#151
  * https://docs.rs/aead/0.5.2/src/aead/stream.rs.html#437
+
+# Android limitations / annoyances
+
+ * Things like screen rotations recreate the whole activity, but not the
+   process, which means we need to save/restore most of the state (or lose
+   it I guess, which is rather annoying). Future work in any case, probably.
