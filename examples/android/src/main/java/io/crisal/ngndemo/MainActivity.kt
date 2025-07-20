@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import kotlinx.serialization.Serializable
 import io.crisal.ngn.NgnListener
 import io.crisal.ngn.NgnSessionProxy
@@ -132,6 +134,8 @@ class MainActivity : ComponentActivity() {
     val peers = mutableStateOf<List<Peer>>(arrayListOf())
     val identity: MutableState<String?> = mutableStateOf(null)
 
+    val gameBoards: HashMap<String, GameBoard> = hashMapOf()
+
     @SuppressLint("MissingPermission")
     private val permissionRequest =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { isGranted ->
@@ -199,10 +203,13 @@ class MainActivity : ComponentActivity() {
                             navController.navigate(route = Game(peer.deviceAddress))
                         })
                     }
-                    composable<Game> {
-                        GamePage(this@MainActivity, onBack = {
-                            navController.navigate(route = PeerList)
-                        })
+                    composable<Game> { backStackEntry ->
+                        GamePage(
+                            this@MainActivity,
+                            backStackEntry.toRoute<Game>().peerId,
+                            onBack = {
+                                navController.navigate(route = PeerList)
+                            })
                     }
                 }
             }
@@ -309,9 +316,10 @@ fun PeerListPage(activity: MainActivity, onGameStart: (Peer) -> Unit) {
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun GamePage(activity: MainActivity, onBack: () -> Unit) {
-    Page(activity, topBarReadOnly = true, onBack = onBack) {
-        Text("Game page here!")
+fun GamePage(activity: MainActivity, peerId: String, onBack: () -> Unit) {
+    Page(activity, topBarReadOnly = true, onBack = onBack) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            Text("Game page here!")
+        }
     }
 }
