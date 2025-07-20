@@ -3,7 +3,9 @@ package io.crisal.ngndemo
 // Pretty inspired by:
 //   https://github.com/gabrielecirulli/2048/blob/478b6ec346e3787f589e4af751378d06ded4cbbc/js/game_manager.js
 
+import android.util.Log
 import kotlin.random.Random
+import kotlinx.serialization.Serializable
 
 enum class GameState {
     NotYetStarted, MyTurn, OtherTurn, Lost, Won,
@@ -13,19 +15,20 @@ enum class MoveDirection {
     Up, Down, Left, Right,
 }
 
+@Serializable
 data class Point(val x: Int, val y: Int)
 
+@Serializable
 data class Tile(var value: Int, var pos: Point)
 
 data class FurthestPosition(val pos: Point, val next: Point)
 
 class GameBoard {
     val size = 4
-    var turn: GameState = GameState.NotYetStarted
+    var state: GameState = GameState.NotYetStarted
         private set
 
     val board: Array<Array<Tile?>> = Array(size) { Array(size) { null } }
-        private set
 
     val tiles = arrayListOf<Tile>()
 
@@ -49,15 +52,19 @@ class GameBoard {
         return score
     }
 
+    fun posInBounds(pos: Point): Boolean {
+        return pos.x >= 0 && pos.x < size && pos.y >= 0 && pos.y < size;
+    }
+
     fun tileAt(pos: Point): Tile? {
-        if (pos.x < size && pos.y < size) {
+        if (posInBounds(pos)) {
             return board[pos.x][pos.y]
         }
         return null
     }
 
     fun cellAvailable(pos: Point): Boolean {
-        return tileAt(pos) == null
+        return posInBounds(pos) && tileAt(pos) == null
     }
 
     fun findFurthestPosition(cell: Point, direction: Point): FurthestPosition {
@@ -106,33 +113,33 @@ class GameBoard {
     }
 
     fun start() {
-        if (turn != GameState.NotYetStarted) {
+        if (state != GameState.NotYetStarted) {
             throw Error("Game is already started")
         }
         tryAddRandomTile()
-        turn = GameState.MyTurn
+        state = GameState.MyTurn
     }
 
     fun startWithTile(tile: Tile) {
-        if (turn != GameState.NotYetStarted) {
-            throw Error("Game is already started")
-        }
+        reset()
         addTile(tile.value, tile.pos)
-        turn = GameState.MyTurn
+        state = GameState.OtherTurn
     }
 
     fun tryAddNewTile(value: Int): Tile? {
         val cells = availableCells()
         if (cells.isEmpty()) {
-            turn = GameState.Lost
+            state = GameState.Lost
             return null
         }
         val pos = cells[Random.nextInt(until = cells.size)]
         return addTile(value, pos)
     }
 
-    fun tryMove(direction: MoveDirection): Tile? {
-        if (turn != GameState.MyTurn || turn != GameState.OtherTurn) {
+    fun tryMove(direction: MoveDirection, tileToCreate: Tile? = null): Tile? {
+        Log.d(TAG, "tryMove($direction)")
+        if (state != GameState.MyTurn && state != GameState.OtherTurn) {
+            Log.d(TAG, " > early out")
             return null
         }
 
@@ -154,16 +161,18 @@ class GameBoard {
                 }
                 val furthest = findFurthestPosition(pos, vector)
                 val next = tileAt(furthest.next)
-                if (next != null && next.value == tile.value && !merged.add(furthest.next)) {
+                if (next != null && next.value == tile.value && merged.add(furthest.next)) {
+                    Log.d(TAG, " > merging $tile with $next")
                     next.value *= 2
                     // Remove the tile we merged into `next`.
                     removeTile(tile)
                     moved = true
                     if (next.value == 2048) {
-                        turn = GameState.Won
+                        state = GameState.Won
                     }
                 } else {
                     if (pos != furthest.pos) {
+                        Log.d(TAG, " > moving $tile to ${furthest.pos}")
                         moveTile(tile, furthest.pos)
                         moved = true // The tile moved from its original cell!
                     }
@@ -173,14 +182,38 @@ class GameBoard {
         if (!moved) {
             return null
         }
-        val tile = tryAddRandomTile()
-        turn = if (tile == null) {
+        val tile = if (tileToCreate != null) {
+            addTile(tileToCreate.value, tileToCreate.pos)
+        } else {
+            tryAddRandomTile()
+        }
+        state = if (tile == null) {
             GameState.Lost
-        } else if (turn == GameState.MyTurn) {
+        } else if (state == GameState.MyTurn) {
             GameState.OtherTurn
         } else {
             GameState.MyTurn
         }
         return tile
+    }
+
+    fun cellValues(): List<Int> {
+        val result = arrayListOf<Int>()
+        for (x in 0..<size) {
+            for (y in 0..<size) {
+                val tile = tileAt(Point(x, y))
+                result.add(
+                    tile?.value ?: 0
+                )
+            }
+        }
+        return result
+    }
+
+    fun reset() {
+        for (tile in ArrayList(tiles)) {
+            removeTile(tile)
+        }
+        state = GameState.NotYetStarted
     }
 }
