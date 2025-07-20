@@ -957,7 +957,14 @@ extern "C" fn ngn_init<'l>(_: JNIEnv<'l>) {
     trace!("ngn_init()\n");
     // Initialize our logging and panic hooks.
     android_logger::init_once(
-        android_logger::Config::default().with_max_level(log::LevelFilter::Trace),
+        android_logger::Config::default()
+            .with_max_level(log::LevelFilter::Trace)
+            .with_filter(
+                android_logger::FilterBuilder::new()
+                    .filter(Some("ngn"), log::LevelFilter::Trace)
+                    .filter(Some("jni"), log::LevelFilter::Warn)
+                    .build(),
+            ),
     );
     log_panics::init();
 }
