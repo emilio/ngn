@@ -95,6 +95,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     private static native void ngn_session_drop(long native_session);
 
     private static native void ngn_session_group_lost(long native_session);
+
     private static native void ngn_session_group_joined(long native_session, boolean is_go, String go_device_address, String interface_name, String owner_ip_address);
 
     private static native void ngn_init();
@@ -178,7 +179,8 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
             return;
         }
         assert m_connectionInfo != null;
-        if (group == null || !m_connectionInfo.groupFormed) {
+        if (group == null || !m_connectionInfo.groupFormed || m_connectionInfo.groupOwnerAddress == null) {
+            Log.d(TAG, "lost group: " + group + ", ci: " + m_connectionInfo);
             if (m_currentGroup == null) {
                 return;
             }
@@ -187,8 +189,10 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
             return;
         }
         if (m_currentGroup != null) {
+            Log.d(TAG, "onGroupInfoAvailable discarding due to existing group: " + m_currentGroup);
             return;
         }
+        Log.d(TAG, "onGroupInfoAvailable calling native with: " + group.getInterface() + ", " + group.getOwner().deviceAddress + ", " + m_connectionInfo.groupOwnerAddress.getHostAddress() );
         m_currentGroup = group;
         // TODO(emilio): Would be nice to have group.getOwner().getIpAddress(), but that of course is Android 15 only :'(
         // Also, it'd be very nice to be able to get the owner interface address, but that is not exposed: WifiP2pDevice
@@ -214,6 +218,8 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         }
 
         Log.d(TAG, "onDeviceInfoAvailable(" + wifiP2pDevice.deviceName + "): " + wifiP2pDevice);
+        assert m_native == 0;
+
         m_native = ngn_session_init(this, wifiP2pDevice.deviceName, m_nickName);
         Log.d(TAG, "onDeviceInfoAvailable got session: " + m_native);
 
@@ -285,6 +291,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         m_manager = null;
         m_channel = null;
         m_physicalPeerList = null;
+        m_currentGroup = null;
         ngn_session_drop(m_native);
         m_native = 0;
     }
