@@ -75,7 +75,8 @@ y transferencia de datos bajo un modelo pub-sub \cite{google-nearby}.
 
 *Multipeer Connectivity Framework*, de Apple, ofrece capacidades similares en
 iOS/macOS, permitiendo descubrir dispositivos cercanos y establecer sesiones
-seguras de comunicación, sin necesidad de servidores externos \cite{multipeer-connectivity}.
+seguras de comunicación, sin necesidad de servidores externos
+\cite{multipeer-connectivity-framework}.
 
 ## Menciones ilustres
 

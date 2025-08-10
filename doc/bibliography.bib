@@ -155,3 +155,92 @@
   howpublished = {\url{https://tailscale.com/blog/how-nat-traversal-works}},
   note         = {Accessed: 2025-08-09}
 }
+
+@techreport{quic-address-discovery,
+  number =    {draft-ietf-quic-address-discovery-00},
+  type =      {Internet-Draft},
+  institution =   {Internet Engineering Task Force},
+  publisher = {Internet Engineering Task Force},
+  note =      {Work in Progress},
+  url =       {https://datatracker.ietf.org/doc/draft-ietf-quic-address-discovery/00/},
+  author =    {Marten Seemann and Christian Huitema},
+  title =     {{QUIC Address Discovery}},
+  pagetotal = 7,
+  year =      2025,
+  month =     mar,
+  day =       3,
+  abstract =  {Unless they have out-of-band knowledge, QUIC endpoints have no information about their network situation. They neither know their external IP address and port, nor do they know if they are directly connected to the internet or if they are behind a NAT. This QUIC extension allows nodes to determine their public IP address and port for any QUIC path.},
+}
+
+@misc{google-nearby,
+  author = {Google},
+  title = {Nearby Connections Overview},
+  howpublished = {\url{https://developers.google.com/nearby/connections/overview}},
+  note         = {Accessed: 2025-08-09}
+}
+
+@misc{multipeer-connectivity-framework,
+  author = {Apple},
+  title = {Multipeer Connectivity Framework | Apple Developer Documentation},
+  howpublished = {\url{https://developer.apple.com/documentation/multipeerconnectivity}},
+  note         = {Accessed: 2025-08-10}
+}
+
+@misc{libp2p,
+  author = {Protocol Labs},
+  title = {libp2p overview},
+  howpublished = {\url{https://docs.libp2p.io/concepts/introduction/overview/}},
+  note         = {Accessed: 2025-08-10}
+}
+
+@misc{iroh,
+  author = {n0 computer},
+  title = {Iroh overview},
+  howpublished = {\url{https://www.iroh.computer/docs/overview}},
+  note = {Accessed: 2025-08-10}
+}
+
+@misc{rfc3489,
+    series =    {Request for Comments},
+    number =    3489,
+    howpublished =  {RFC 3489},
+    publisher = {RFC Editor},
+    doi =       {10.17487/RFC3489},
+    url =       {https://www.rfc-editor.org/info/rfc3489},
+    author =    {Jonathan Rosenberg and Christian Huitema and Rohan Mahy and Joel Weinberger},
+    title =     {{STUN - Simple Traversal of User Datagram Protocol (UDP) Through Network Address Translators (NATs)}},
+    pagetotal = 47,
+    year =      2003,
+    month =     mar,
+    abstract =  {Simple Traversal of User Datagram Protocol (UDP) Through Network Address Translators (NATs) (STUN) is a lightweight protocol that allows applications to discover the presence and types of NATs and firewalls between them and the public Internet. It also provides the ability for applications to determine the public Internet Protocol (IP) addresses allocated to them by the NAT. STUN works with many existing NATs, and does not require any special behavior from them. As a result, it allows a wide variety of applications to work through existing NAT infrastructure. {[}STANDARDS-TRACK{]}},
+}
+
+@misc{rfc5389,
+    series =    {Request for Comments},
+    number =    5389,
+    howpublished =  {RFC 5389},
+    publisher = {RFC Editor},
+    doi =       {10.17487/RFC5389},
+    url =       {https://www.rfc-editor.org/info/rfc5389},
+    author =    {Philip Matthews and Jonathan Rosenberg and Dan Wing and Rohan Mahy},
+    title =     {{Session Traversal Utilities for NAT (STUN)}},
+    pagetotal = 51,
+    year =      2008,
+    month =     oct,
+    abstract =  {Session Traversal Utilities for NAT (STUN) is a protocol that serves as a tool for other protocols in dealing with Network Address Translator (NAT) traversal. It can be used by an endpoint to determine the IP address and port allocated to it by a NAT. It can also be used to check connectivity between two endpoints, and as a keep-alive protocol to maintain NAT bindings. STUN works with many existing NATs, and does not require any special behavior from them. STUN is not a NAT traversal solution by itself. Rather, it is a tool to be used in the context of a NAT traversal solution. This is an important change from the previous version of this specification (RFC 3489), which presented STUN as a complete solution. This document obsoletes RFC 3489. {[}STANDARDS-TRACK{]}},
+}
+
+@misc{rfc8656,
+    series =    {Request for Comments},
+    number =    8656,
+    howpublished =  {RFC 8656},
+    publisher = {RFC Editor},
+    doi =       {10.17487/RFC8656},
+    url =       {https://www.rfc-editor.org/info/rfc8656},
+    author =    {Tirumaleswar Reddy.K and Alan Johnston and Philip Matthews and Jonathan Rosenberg},
+    title =     {{Traversal Using Relays around NAT (TURN): Relay Extensions to Session Traversal Utilities for NAT (STUN)}},
+    pagetotal = 79,
+    year =      2020,
+    month =     feb,
+    abstract =  {If a host is located behind a NAT, it can be impossible for that host to communicate directly with other hosts (peers) in certain situations. In these situations, it is necessary for the host to use the services of an intermediate node that acts as a communication relay. This specification defines a protocol, called "Traversal Using Relays around NAT" (TURN), that allows the host to control the operation of the relay and to exchange packets with its peers using the relay. TURN differs from other relay control protocols in that it allows a client to communicate with multiple peers using a single relay address. The TURN protocol was designed to be used as part of the Interactive Connectivity Establishment (ICE) approach to NAT traversal, though it can also be used without ICE. This document obsoletes RFCs 5766 and 6156.},
+}

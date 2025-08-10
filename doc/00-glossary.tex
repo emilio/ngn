@@ -12,12 +12,12 @@
 
 \newglossaryentry{STUN}{
   name=STUN,
-  description={\em{Session Traversal Utilities for NAT}, es una serie de técnicas estandarizadas, incluyendo un protocolo, para descubrir la presencia de NATs y conectar dispositivos directamente a través de ellas \cite{rfc3489} \cite{rfc5389}}
+  description={\emph{Session Traversal Utilities for NAT}, es una serie de técnicas estandarizadas, incluyendo un protocolo, para descubrir la presencia de NATs y conectar dispositivos directamente a través de ellas \cite{rfc3489} \cite{rfc5389}}
 }
 
 \newglossaryentry{NAT}{
   name=NAT,
-  description={\em{Network Address Translation}, es una técnica que permite a varios dispositivos compartir una dirección de red. Eric Rescorla tiene una muy buena descripción de los diferentes problemas que crean en su blog \cite{ekr-nat}}
+  description={\emph{Network Address Translation}, es una técnica que permite a varios dispositivos compartir una dirección de red. Eric Rescorla tiene una muy buena descripción de los diferentes problemas que crean en su blog \cite{ekr-nat}}
 }
 
 \newglossaryentry{QUIC}{
@@ -27,9 +27,12 @@
 
 \newglossaryentry{TURN}{
   name=TURN,
-  description={\em{Traversal Using Relays around NAT} es un protocolo que asiste en aplicaciones cuando no se puede conectar directamente a través de las NAT, transmitiendo datos por un servidor intermedio \cite{rfc8656}}
+  description={\emph{Traversal Using Relays around NAT} es un protocolo que asiste en aplicaciones cuando no se puede conectar directamente a través de las NAT, transmitiendo datos por un servidor intermedio \cite{rfc8656}}
 }
+
 \newglossaryentry{hole-punching}{
   name=Hole punching,
-  description={\em{Hole punching} es una técnica para establecer una conexión directa entre dos dispositivos a través de internet, donde estos dispositivos pueden estar detrás de firewalls o \gls{NAT}. Generalmente se usan protocolos como \gls{STUN}, \gls{TURN}, o QUIC address discovery \cite{quic-addr-discovery}. TailScale tiene una genial explicación de cómo implementan NAT traversal para implementar su plataforma \cite{tailscale-nat-traversal}}
+  description={\emph{Hole punching} es una técnica para establecer una conexión directa entre dos dispositivos a través de internet, donde estos dispositivos pueden estar detrás de firewalls o \gls{NAT}. Generalmente se usan protocolos como \gls{STUN}, \gls{TURN}, o QUIC address discovery \cite{quic-address-discovery}. TailScale tiene una genial explicación de cómo implementan NAT traversal para implementar su plataforma \cite{tailscale-nat-traversal}}
 }
+
+\glsaddallunused
