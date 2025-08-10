@@ -4,3 +4,32 @@
   name=MANET,
   description={Mobile Ad-Hock Networks, un tipo de red mallada inalámbrica en la que todos los nodos se conectan directamente de manera directa, dinámica, y no jerárquica}
 }
+
+\newglossaryentry{LoRa}{
+  name=LoRa,
+  description={Long Range en inglés, una tecnología propietaria de comunicación por radio de baja frecuencia}
+}
+
+\newglossaryentry{STUN}{
+  name=STUN,
+  description={\em{Session Traversal Utilities for NAT}, es una serie de técnicas estandarizadas, incluyendo un protocolo, para descubrir la presencia de NATs y conectar dispositivos directamente a través de ellas \cite{rfc3489} \cite{rfc5389}}
+}
+
+\newglossaryentry{NAT}{
+  name=NAT,
+  description={\em{Network Address Translation}, es una técnica que permite a varios dispositivos compartir una dirección de red. Eric Rescorla tiene una muy buena descripción de los diferentes problemas que crean en su blog \cite{ekr-nat}}
+}
+
+\newglossaryentry{QUIC}{
+  name=QUIC,
+  description={Protocolo de transporte de red orientado a conexión, pero sobre UDP, lo cual consigue beneficios de rendimiento comparado con TCP. Gracias a que funciona sobre UDP, es más resistente a la pérdida de paquetes y por lo tanto es útil a la hora de hacer bypass de NATs y firewalls \cite{tailscale-nat-traversal} \cite{rfc9000}}
+}
+
+\newglossaryentry{TURN}{
+  name=TURN,
+  description={\em{Traversal Using Relays around NAT} es un protocolo que asiste en aplicaciones cuando no se puede conectar directamente a través de las NAT, transmitiendo datos por un servidor intermedio \cite{rfc8656}}
+}
+\newglossaryentry{hole-punching}{
+  name=Hole punching,
+  description={\em{Hole punching} es una técnica para establecer una conexión directa entre dos dispositivos a través de internet, donde estos dispositivos pueden estar detrás de firewalls o \gls{NAT}. Generalmente se usan protocolos como \gls{STUN}, \gls{TURN}, o QUIC address discovery \cite{quic-addr-discovery}. TailScale tiene una genial explicación de cómo implementan NAT traversal para implementar su plataforma \cite{tailscale-nat-traversal}}
+}

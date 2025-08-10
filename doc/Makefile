@@ -12,7 +12,7 @@ clean:
 cleanbuild: clean build
 
 # We assume all resources are used
-build/main.pdf: $(TEX_TARGETS) build/pandoc-macros.tex $(wildcard res/*)
+build/main.pdf: $(TEX_TARGETS) build/pandoc-macros.tex $(wildcard res/*) bibliography.bib
 	@mkdir -p $(@D)
 	latexmk -pdf -jobname=build/main main
 
