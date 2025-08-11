@@ -265,3 +265,9 @@ worth combining randomness with a counter or so:
  * Things like screen rotations recreate the whole activity, but not the
    process, which means we need to save/restore most of the state (or lose
    it I guess, which is rather annoying). Future work in any case, probably.
+
+# Generating docs
+
+ * This works for Linux: `cargo doc --all --workspace`
+ * This works for android: `CC=clang cargo doc --all --workspace --target x86_64-linux-android`
+ * Merging them is not easy: https://github.com/rust-lang/rust/issues/1998
