@@ -2,18 +2,27 @@
 
 \usepackage[margin=3cm]{geometry}
 \usepackage[spanish]{babel}
-\usepackage{hyperref} % For links
+\usepackage{xcolor}
+\usepackage[pdfusetitle]{hyperref} % For links
 \usepackage{titling} % Convenient access to title / author / etc
 \usepackage{graphicx} % For images
 \usepackage[indent=20pt]{parskip}
 \usepackage{listings}
-\usepackage{glossaries}
+\usepackage[nonumberlist]{glossaries}
 \usepackage[nottoc]{tocbibind} % Show bibliography in toc
 \input{build/pandoc-macros.tex} % For syntax highlighting
 
 % From pandoc:
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% Underline rather than full-border of links in PDF.
+% Also disable border in internal links.
+\hypersetup{pdfborderstyle={/S/U/W 1}}
+
+% Make links be footnotes too.
+\let\oldhref\href
+\renewcommand{\href}[2]{\oldhref{#1}{#2}\footnote{#2: \url{#1}}}
 
 \title{
   \textbf{Biblioteca para comunicación directa entre dispositivos basada en tecnologías P2P} \\
@@ -70,6 +79,16 @@
 \clearpage
 
 \input{00-abstract.tex}
+
+\clearpage
+
+\printglossaries
+
+\clearpage
+
+\section*{Agradecimientos}
+
+\emph{A Guillermo y a Pablo, por sacar ese ratito todas las semanas.}
 
 \clearpage
 

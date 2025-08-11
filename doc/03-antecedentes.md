@@ -28,7 +28,7 @@
 # Acceso a Internet, centralización y privacidad
 
 Aunque el acceso a internet ha crecido exponencialmente desde finales del siglo
-XX, su disponibilidad sigue siendo desigual. Según datos de la Unión
+veinte, su disponibilidad sigue siendo desigual. Según datos de la Unión
 Internacional de Telecomunicaciones, a finales de 2024, aproximadamente
 un 30% de la población mundial aún no tenía acceso regular a internet
 \cite{itu-2024}. Esta brecha digital afecta especialmente a comunidades

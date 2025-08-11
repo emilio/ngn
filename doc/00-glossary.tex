@@ -31,8 +31,74 @@
 }
 
 \newglossaryentry{hole-punching}{
-  name=Hole punching,
-  description={\emph{Hole punching} es una técnica para establecer una conexión directa entre dos dispositivos a través de internet, donde estos dispositivos pueden estar detrás de firewalls o \gls{NAT}. Generalmente se usan protocolos como \gls{STUN}, \gls{TURN}, o QUIC address discovery \cite{quic-address-discovery}. TailScale tiene una genial explicación de cómo implementan NAT traversal para implementar su plataforma \cite{tailscale-nat-traversal}}
+  name=hole punching,
+  description={Técnica para establecer una conexión directa entre dos dispositivos a través de internet, donde estos dispositivos pueden estar detrás de firewalls o \gls{NAT}. Generalmente se usan protocolos como \gls{STUN}, \gls{TURN}, o QUIC address discovery \cite{quic-address-discovery}. TailScale tiene una genial explicación de cómo implementan NAT traversal para implementar su plataforma \cite{tailscale-nat-traversal}},
+  see={NAT}
+}
+
+\newglossaryentry{CI/CD}{
+  name=CI/CD,
+  description={La Integración Continua/Entrega Continua (CI/CD, por sus
+  siglas en inglés, \emph{Continuous Integration/Continuous Delivery}) es una
+  práctica de desarrollo de software que automatiza el proceso
+  (tradicionalmente manual) de llevar código desde su creación hasta su entrega
+  en producción. Abarca las últimas fases del ciclo de vida del desarrollo de
+  software, incluyendo la compilación, pruebas, implementación y despliegue de
+  aplicaciones}
+}
+
+\newglossaryentry{memory-safe}{
+  name=memory-safe,
+  description={\emph{Memory safety} se refiere a la capacidad de un sistema o
+  lenguaje de programación de prevenir problemas y vulnerabilidades de
+  seguridad relacionadas con los accesos a memoria}
+}
+
+\newglossaryentry{thread-safe}{
+  name=thread-safe,
+  description={\emph{Thread safety} se refiere a la capacidad de un sistema de
+  comportarse correctamente en presencia de accesos desde múltiples hilos
+  concurrentemente}
+}
+
+\newglossaryentry{JVM}{
+  name=JVM,
+  description={La Máquina Virtual de Java (\emph{Java Virtual Machine} en
+  inglés) es el entorno de ejecución que ejecuta el bytecode de Java para una
+  plataforma específica}
+}
+
+\newglossaryentry{JNI}{
+  name=JNI,
+  description={La Interfaz Nativa de Java (\emph{Java Native Interface} en
+  inglés) es una interfaz que permite interactuar a la \gls{JVM} con código
+  nativo como el escrito en lenguajes como C, C++, o Rust}
+}
+ 
+\newglossaryentry{markdown}{
+  name=Markdown,
+  description={Lenguaje de marcado ligero con formato de texto plano diseñado para ser fácil de leer y escribir}
+}
+
+\newglossaryentry{transpilación}{
+  name=Transpilación,
+  description={Proceso mediante el cual se convierte código fuente de un
+  lenguaje de programación a otro de un nivel de abstracción similar. Esto es
+  en contraposición a la compilación, que convierte código de un lenguaje de
+  programación de un nivel más alto a otro de un nivel más bajo}
+}
+
+\newglossaryentry{WPA}{
+  name=WPA,
+  description={\emph{WiFi Protected Access}, una serie de protocolos de
+  seguridad estándares para proteger redes inalámbricas}
+}
+
+\newglossaryentry{wpa_supplicant}{
+  name=wpa\_supplicant,
+  description={Implementación de software libre de un suplicante WPA, utilizado
+  para gestionar conexiones a redes WiFi en Linux, Android, y otros sistemas
+  operativos}
 }
 
 \glsaddallunused
