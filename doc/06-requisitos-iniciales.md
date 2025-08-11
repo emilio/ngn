@@ -5,3 +5,30 @@
   aportados en el Anexo de "Especificaciones del sistema" mediante casos de
   uso, historias de usuario, etc.
 -->
+
+En este capítulo se recogen, de manera resumida, los requisitos del sistema,
+especificados siguiendo la Metodología para la Elicitación de Requisitos de
+Sistemas Software de Durán Toro y Bernárdez Jiménez \cite{req-duran-bernardez}.
+
+En el *Anexo I. Especificaciones del sistema* se especifican estos requisitos
+de manera más detallada, siguiendo, en la medida de lo posible, la estructura y
+plantillas especificada por Durán y Bernárdez \cite{req-duran-bernardez}.
+
+Este capítulo constituye un resumen de las partes más relevantes de dicho
+anexo.
+
+# Requisitos de información
+
+Según la norma IEEE 29148-2018 sobre ingeniería de requisitos
+\cite{ieee-29148}, los requisitos de información \enquote{definen los
+requisitos para la gestión por parte del sistema de la información que recibe,
+genera o exporta} (p. 66).
+
+TODO
+
+# Requisitos funcionales
+
+Los requisitos funcionales definen \enquote{qué debe hacer el sistema con la información
+almacenada para alcanzar los objetivos de su negocio}.
+
+TODO

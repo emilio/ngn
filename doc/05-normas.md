@@ -168,10 +168,10 @@ proyecto, aunque no como parte de este trabajo.
 
 ### Documentación: \LaTeX
 
-[\LaTeX](https://www.latex-project.org/) es "un sistema de preparación de
+[\LaTeX](https://www.latex-project.org/) es \enquote{un sistema de preparación de
 documentos de alta calidad. [...] Es el estándar de facto para la comunicación
 y publicación de documentos científicos y
-técnicos" \cite{latex}.
+técnicos} \cite{latex}.
 
 Se consideró usar una alternativa más moderna al sistema de macros de \LaTeX
 llamada [Typst](https://typst.app/), pero el conocimiento previo de \LaTeX del
@@ -185,6 +185,11 @@ de \LaTeX, y la falta de tiempo hicieron que no mereciera la pena.
 marcado. En particular, se ha usado para usar \Gls{markdown} para la mayoría
 del contenido de la memoria y transpilarlo a \LaTeX, para su inclusión en el
 documento final.
+
+### Documentación: rustdoc
+
+[rustdoc](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) es la
+herramienta oficial de Rust para generar documentación desde el código fuente.
 
 ## Otras herramientas
 
@@ -207,30 +212,26 @@ solicitudes de incorporación de cambios (en inglés, *pull requests*), gestiona
 incidencias (en inglés, *issues*), wikis, y la integración con herramientas de
 \gls{CI/CD}.
 
+<!--
 # Modelos
 
-<!--
   Se deberá realizar una introducción breve a los modelos técnicos utilizados,
   siempre que sean relevantes para el TFG y no entren dentro del ámbito
   estándar de un trabajo de TFG. Como ejemplo, se pueden describir en este
   apartado modelos de Inteligencia Artificial que se empleen, modelos
   industriales como PID, modelos electrónicos, etc.
--->
 
 # Prototipos
 
-<!--
   En este apartado, si lo admite la metodología, se deberán definir wireframes
   (representación visual simplificada de la estructura y el diseño de una
   página web o aplicación). Se pueden aplicar las técnicas de prototipado, así
   como otras técnicas como el uso de mock-ups (representación virtual de un
   prototipo del proyecto que una persona quiere presentar.), diagramas de
   navegación, etc.
--->
 
 # Métricas
 
-<!--
   Se describirán las métricas usadas para evaluar el proyecto (test de
   usuarios, métricas de rendimiento, etc.) si se han aplicado.
 -->

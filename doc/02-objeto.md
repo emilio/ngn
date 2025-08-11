@@ -1,4 +1,5 @@
 \chapter{Objeto}
+\label{chap:objeto}
 
 <!--
   En este apartado se describirán los objetivos funcionales y personales. Se
