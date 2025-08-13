@@ -3,6 +3,10 @@ name = "ngn"
 version = "0.1.0"
 edition = "2021"
 description = "P2P"
+authors = ["Emilio Cobos Álvarez <emilio@crisal.io>"]
+# Feel free to contact me if you're for some reason interested in re-licensing
+# this code.
+license = "GPL-3.0-or-later"
 
 [lib]
 name = "ngn"
