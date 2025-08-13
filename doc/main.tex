@@ -29,6 +29,9 @@
 \let\oldhref\href
 \renewcommand{\href}[2]{\oldhref{#1}{#2}\footnote{#2: \url{#1}}}
 
+% Code listing number style.
+\renewcommand{\theFancyVerbLine}{\ttfamily {\footnotesize \oldstylenums{\arabic{FancyVerbLine}}}}
+
 \title{
   \textbf{Biblioteca para comunicación directa entre dispositivos basada en tecnologías P2P} \\
   \vspace{\parskip}

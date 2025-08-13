@@ -66,7 +66,7 @@ def minted(key, value, format, meta):
     # Determine what kind of code object this is.
     if key == 'CodeBlock':
         template = Template(
-            '\\begin{minted}[tabsize=2,breaklines,linenos,xleftmargin=\\parindent,numbersep=5pt]{$language}\n$contents\n\\end{minted}'
+            '\\begin{minted}[frame=single,framesep=5pt,tabsize=2,breaklines,linenos,xleftmargin=\\parindent,numbersep=5pt]{$language}\n$contents\n\\end{minted}'
         )
         Element = RawBlock
     elif key == 'Code':

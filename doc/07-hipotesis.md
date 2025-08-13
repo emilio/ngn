@@ -79,6 +79,8 @@ Esta ID sería útil, porque es la que otros dispositivos y la capa de transport
 ven, pero como compromiso, la librería soporta asociarse por nombre
 inicialmente (aunque eso por supuesto tiene más posibilidades de colisiones).
 
+\clearpage
+
 ## Restricciones técnicas: Permisos en Linux
 
 El ecosistema de Linux es muy variado, y no se ha hecho un estudio exhaustivo
@@ -86,22 +88,19 @@ sobre qué distribuciones limitan el acceso por \Gls{D-Bus} a `wpa_supplicant`,
 pero al menos Arch Linux limita el acceso a `root` por defecto:
 
 ```xml
-<!DOCTYPE busconfig PUBLIC
- "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<!DOCTYPE busconfig PUBLIC ...>
 <busconfig>
-        <policy user="root">
-                <allow own="fi.w1.wpa_supplicant1"/>
-
-                <allow send_destination="fi.w1.wpa_supplicant1"/>
-                <allow send_interface="fi.w1.wpa_supplicant1"/>
-                <allow receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
-        </policy>
-        <policy context="default">
-                <deny own="fi.w1.wpa_supplicant1"/>
-                <deny send_destination="fi.w1.wpa_supplicant1"/>
-                <deny receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
-        </policy>
+  <policy user="root">
+    <allow own="fi.w1.wpa_supplicant1"/>
+    <allow send_destination="fi.w1.wpa_supplicant1"/>
+    <allow send_interface="fi.w1.wpa_supplicant1"/>
+    <allow receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
+  </policy>
+  <policy context="default">
+    <deny own="fi.w1.wpa_supplicant1"/>
+    <deny send_destination="fi.w1.wpa_supplicant1"/>
+    <deny receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
+  </policy>
 </busconfig>
 ```
 
@@ -110,21 +109,26 @@ algo como:
 
 ```xml
 <policy group="wheel">
-        <allow own="fi.w1.wpa_supplicant1"/>
-
-        <allow send_destination="fi.w1.wpa_supplicant1"/>
-        <allow send_interface="fi.w1.wpa_supplicant1"/>
-        <allow receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
+  <allow own="fi.w1.wpa_supplicant1"/>
+  <allow send_destination="fi.w1.wpa_supplicant1"/>
+  <allow send_interface="fi.w1.wpa_supplicant1"/>
+  <allow receive_sender="fi.w1.wpa_supplicant1" receive_type="signal"/>
 </policy>
 ```
 
 Para permitir el acceso a todos los usuarios del grupo `wheel`. Otras
 alternativas serían usar un `dbus-daemon` diferente, como se ha hecho para
-testear localmente.
+testear localmente con múltiples instancias.
 
 ## Restricciones técnicas: DHCP 
 
-TODO
+Con la intención de simplificar la capa de transporte, inicialmente se intentó
+usar direcciones de link local de IPv6 \cite{rfc4862} (sección 5.3).
+
+Sin embargo, algunos servidores DHCP rompen esto por defecto, como
+[dhcpcd](https://github.com/NetworkConfiguration/dhcpcd). El autor sugirió una
+[mejora](https://github.com/NetworkConfiguration/dhcpcd/issues/473) a este
+proyecto que se aceptó y resolvió rápidamente.
 
 ## Restricciones de usabilidad: Permisos en Android
 
@@ -153,7 +157,64 @@ mucho más limitada.
 
 ## Restricciones de usabilidad: Interacción entre `wpa_supplicant` y `NetworkManager`
 
-TODO
+Actualmente, usar la librería via `wpa_supplicant` requiere desactivar
+[`NetworkManager`](https://networkmanager.dev). Esto es porque `NetworkManager`
+ve una interfaz que no conoce y la desactiva. Se ha
+[reportado](https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues/1804)
+al proyecto, y se colaborará para llegar a una solución.
 
-# Alcance funcional del proyecto
+# Alcance funcional del proyecto e impacto esperado
+
+Dado a la duración del proyecto y las limitaciones temporales, el alcance del
+proyecto es limitado.
+
+El proyecto cumple la gran mayoría de los objetivos propuestos, incluida una
+demo funcional en Android, pero hay mucha funcionalidad y mejoras extra que no
+han podido hacerse por falta de tiempo y por las varias restricciones descritas
+anteriormente, que han consumido más tiempo de desarrollo del esperado.
+
+De ellas, los grupos lógicos es la mayor omisión, pero se pueden implementar
+sobre la infraestructura existente sin demasiado esfuerzo, o incluso por encima
+de la librería.
+
+En términos de la adopción esperada, lo ideal sería que esta librería se
+convirtiera en un proyecto viable para la adopción de este tipo de tecnologías
+a gran escala.
+
+En la práctica, la librería es bastante útil en su estado actual para
+aplicaciones P2P sencillas. Hacerla útil para redes a gran escala requeriría
+bastante trabajo extra.
+
+En Linux:
+
+ * Coordinación con `NetworkManager` para evitar interacciones no deseadas.
+
+ * Coordinación con distribuciones para proveer acceso a este mecanismo a la
+   librería. Esto probablemente requiera una aplicación o servicio
+   "privilegiado" para gestionar las conexiones.
+
+ * Coordinación con distribuciones para que los servidores DHCP usen
+   direcciones de link local por defecto para conexiones P2P o formas
+   alternativas de descubrir direcciones. Usar \Gls{NDP} \cite{rfc4861} sería
+   una opción, pero los paquetes necesarios solo pueden ser creados por
+   aplicaciones privilegiadas via
+   [`CAP_NET_RAW`](https://man7.org/linux/man-pages/man7/capabilities.7.html).
+
+En Android:
+
+ * Implementación de múltiples grupos físicos via Bluetooth, o mejorando
+   las APIs de Android para soportarlo, aunque esto es probable que sea difícil
+   en el futuro (aunque técnicamente se pueden [enviar parches a
+   Android](https://source.android.com/docs/setup/contribute/submit-patches),
+   la tendencia ha sido a [hacer el desarrollo más
+   opaco](https://www.androidauthority.com/google-android-development-aosp-3538503/).
+
+Generalmente:
+
+ * Añadir soporte para [Windows](https://learn.microsoft.com/en-us/windows/win32/nativewifi/using-the-wi-fi-direct-api).
+ * Añadir soporte para macOS e iOS, que no soportan WiFi Direct y por lo tanto
+   requerirían Bluetooth para comunicarse con otras plataformas.
+
+aunque dadas las restricciones existentes, esto requeriría bastante trabajo de
+integración.
 
