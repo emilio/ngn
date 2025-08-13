@@ -9,6 +9,9 @@
 \usepackage{graphicx} % For images
 \usepackage[indent=20pt]{parskip}
 \usepackage{listings}
+\usepackage{minted}
+\usepackage{amsmath}
+\usepackage[spanish,nameinlink,noabbrev]{cleveref}
 \usepackage[nonumberlist]{glossaries}
 \usepackage[nottoc]{tocbibind} % Show bibliography in toc
 \input{build/pandoc-macros.tex} % For syntax highlighting
@@ -16,6 +19,7 @@
 % From pandoc:
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\newcommand{\passthrough}[1]{#1}
 
 % Underline rather than full-border of links in PDF.
 % Also disable border in internal links.
@@ -40,6 +44,8 @@
 \input{00-glossary.tex}
 
 \begin{document} 
+
+\pagenumbering{roman}
 
 \begin{titlepage}
 \begin{center}
@@ -73,8 +79,6 @@
 \end{center}
 \end{titlepage}
 
-\pagenumbering{gobble}
-
 \input{00-cert.tex}
 
 \clearpage
@@ -87,15 +91,17 @@
 
 \clearpage
 
-\section*{Agradecimientos}
+\begin{flushright}
+  \emph{A Guillermo y a Pablo, por sacar ese rato todas las semanas.}
+\end{flushright}
 
-\emph{A Guillermo y a Pablo, por sacar ese ratito todas las semanas.}
+\clearpage
+
+\tableofcontents
 
 \clearpage
 
 \pagenumbering{arabic}
-
-\tableofcontents
 
 \input{01-intro.tex}
 \input{build/02-objeto.tex}

@@ -1,5 +1,6 @@
 *.aux
 *.log
 *.out
+_minted/
 build/
 main.pdf

@@ -32,3 +32,19 @@ Los requisitos funcionales definen \enquote{qué debe hacer el sistema con la in
 almacenada para alcanzar los objetivos de su negocio}.
 
 TODO
+
+# Requisitos no funcionales
+\label{sec:nfr}
+
+Los requisitos no funcionales son aquellos que definen cualidades sobre el
+sistema que no están directamente relacionadas con la funcionalidad del mismo,
+sino con aspectos como el rendimiento, la usabilidad, la seguridad, etc
+\cite{penalvo-requirements}.
+
+Así, se han definido los siguientes requisitos no funcionales para el sistema:
+
+  1. **Portabilidad**: Accesibilidad desde diferentes plataformas y sistemas operativos.
+  2. **Extensibilidad**: Facilidad para añadir nuevas plataformas y transportes físicos.
+  3. **Seguridad**: Identificación y cifrado de mensajes independiente de la capa física.
+  4. **Accesibilidad**: La librería deberá funcionar con dispositivos
+     accesibles / no requerir hardware especial.

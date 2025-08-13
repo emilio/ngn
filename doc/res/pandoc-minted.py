@@ -2,7 +2,7 @@
 ''' A pandoc filter that has the LaTeX writer use minted for typesetting code.
 
 Usage:
-    pandoc --filter ./minted.py -o myfile.tex myfile.md
+    pandoc --filter ./pandoc-minted.py -o myfile.tex myfile.md
 '''
 
 from string import Template
@@ -66,7 +66,7 @@ def minted(key, value, format, meta):
     # Determine what kind of code object this is.
     if key == 'CodeBlock':
         template = Template(
-            '\\begin{minted}[$attributes]{$language}\n$contents\n\\end{minted}'
+            '\\begin{minted}[tabsize=2,breaklines,linenos,xleftmargin=\\parindent,numbersep=5pt]{$language}\n$contents\n\\end{minted}'
         )
         Element = RawBlock
     elif key == 'Code':

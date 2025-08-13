@@ -27,6 +27,6 @@ build/pandoc-macros.tex: res/pandoc-macros.md res/pandoc-macros.tex.in
 	@mkdir -p $(@D)
 	pandoc $< --template=res/pandoc-macros.tex.in -o $@
 
-build/%.tex: %.md
+build/%.tex: %.md res/pandoc-minted.py
 	@mkdir -p $(@D)
-	pandoc $< -o $@
+	pandoc $< --filter res/pandoc-minted.py -o $@
