@@ -79,6 +79,7 @@ implementación, metodológicas, de documentación y prototipado, y otras.
 ## Herramientas de implementación
 
 ### Lenguaje de programación: Rust
+\label{subsec:lang}
 
 Se ha elegido [Rust](https://rust-lang.org) para la implementación principal
 de la librería. Rust es un lenguaje de propósito general que tiene varias
@@ -194,6 +195,7 @@ herramienta oficial de Rust para generar documentación desde el código fuente.
 ## Otras herramientas
 
 ### Control de versiones: Git
+\label{subsec:vcs}
 
 [Git](https://git-scm.com) es un sistema de control de versiones distribuido de
 código abierto.
@@ -202,6 +204,7 @@ Es ampliamente utilizado en la industria del software para gestionar el código
 fuente y colaborar en proyectos de desarrollo.
 
 ### Alojamiento de código: GitHub
+\label{subsec:hosting}
 
 [GitHub](https://github.com) es una plataforma de alojamiento de código que
 utiliza Git como sistema de control de versiones.

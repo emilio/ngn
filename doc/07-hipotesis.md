@@ -182,10 +182,10 @@ convirtiera en un proyecto viable para la adopción de este tipo de tecnologías
 a gran escala.
 
 En la práctica, la librería es bastante útil en su estado actual para
-aplicaciones P2P sencillas. Hacerla útil para redes a gran escala requeriría
-bastante trabajo extra.
+aplicaciones P2P sencillas. Sin embargo, hacerla útil para redes a gran escala
+requeriría bastante trabajo extra, descrito a continuación.
 
-En Linux:
+### Linux
 
  * Coordinación con `NetworkManager` para evitar interacciones no deseadas.
 
@@ -200,21 +200,22 @@ En Linux:
    aplicaciones privilegiadas via
    [`CAP_NET_RAW`](https://man7.org/linux/man-pages/man7/capabilities.7.html).
 
-En Android:
+### Android:
 
- * Implementación de múltiples grupos físicos via Bluetooth, o mejorando
-   las APIs de Android para soportarlo, aunque esto es probable que sea difícil
-   en el futuro (aunque técnicamente se pueden [enviar parches a
+ * Implementación de múltiples grupos físicos via Bluetooth, o
+
+ * Extensión y mejoras de las APIs de Android para soportar múltiples grupos
+   físicos. Esto es probable que sea difícil (aunque técnicamente
+   se pueden [enviar parches a
    Android](https://source.android.com/docs/setup/contribute/submit-patches),
    la tendencia ha sido a [hacer el desarrollo más
    opaco](https://www.androidauthority.com/google-android-development-aosp-3538503/).
 
-Generalmente:
+### Otras plataformas
 
- * Añadir soporte para [Windows](https://learn.microsoft.com/en-us/windows/win32/nativewifi/using-the-wi-fi-direct-api).
+ * Añadir soporte para
+   [Windows](https://learn.microsoft.com/en-us/windows/win32/nativewifi/using-the-wi-fi-direct-api)
+   debería ser posible y razonablemente fácil.
+
  * Añadir soporte para macOS e iOS, que no soportan WiFi Direct y por lo tanto
    requerirían Bluetooth para comunicarse con otras plataformas.
-
-aunque dadas las restricciones existentes, esto requeriría bastante trabajo de
-integración.
-
