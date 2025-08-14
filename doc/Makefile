@@ -6,7 +6,7 @@ build: build/main.pdf
 
 .PHONY: clean
 clean:
-	rm -rf build/
+	rm -rf build _minted
 
 .PHONY: cleanbuild
 cleanbuild: clean build
