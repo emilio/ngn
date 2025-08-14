@@ -168,6 +168,7 @@ proyecto, aunque no como parte de este trabajo.
 ## Herramientas para la elaboración del TFG
 
 ### Documentación: \LaTeX
+\label{subsec:latex}
 
 [\LaTeX](https://www.latex-project.org/) es \enquote{un sistema de preparación de
 documentos de alta calidad. [...] Es el estándar de facto para la comunicación
@@ -180,6 +181,7 @@ autor, la \gls{transpilación} desde \Gls{markdown}, la más amplia documentaci�
 de \LaTeX, y la falta de tiempo hicieron que no mereciera la pena.
 
 ### Documentación: Pandoc
+\label{subsec:pandoc}
 
 [Pandoc](https://pandoc.org/) es una herramienta de software libre escrita en
 [Haskell](https://www.haskell.org/) que permite convertir entre lenguajes de

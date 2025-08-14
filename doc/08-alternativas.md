@@ -129,3 +129,47 @@ Tampoco se ha planteado no utilizar un sistema de control de versiones, ya que
 es una herramienta esencial para el desarrollo de software, y permite llevar un
 seguimiento de los cambios realizados en el código, así como colaborar con
 otros desarrolladores de forma más eficiente en un futuro.
+
+## Documentación
+
+Para la documentación del proyecto se ha utilizado una mezcla de \LaTeX
+(\cref{subsec:latex}) y Pandoc (\cref{subsec:pandoc}).
+
+Se podría haber utilizado cualquier procesador de textos como [LibreOffice
+Writer](https://www.libreoffice.org/discover/writer) o [Google
+Docs](https://docs.google.com), pero usar \LaTeX y Markdown se consideró una
+ventaja por la mejor calidad, y la capacidad de usar el mismo sistema de
+control de versiones para el texto.
+
+# Coste del proyecto
+
+No se ha recibido ninguna compensación por el desarrollo del proyecto, pero
+haciendo una estimación conservadora de las horas empleadas en el trabajo,
+incluyendo el desarrollo de la memoria y documentación, de aproximadamente 1
+hora de trabajo por cada *commit*, y el salario que el autor recibe como parte
+de su trabajo habitual como *Senior Staff Software Engineer*:
+
+$$\text{Coste} = 140h \times \text{\EUR{88}} / h = \text{\EUR{12320}}$$
+
+Dado a que el coste de herramientas es \EUR{0}, ya que todas son herramientas
+de software libre, ese sería también el coste total.
+
+Dicho eso, sería posible que el tiempo de desarrollo y coste hubieran sido
+menores sin las limitaciones temporales que han aplacado a este trabajo.
+
+El mantenimiento del proyecto en si no tiene costes asociados, dado el uso de
+plataformas gratuitas para el alojamiento de código. Eventualmente sería ideal
+tener integración continua con dispositivos reales, que no es fácil de
+conseguir gratis, pero en cualquier caso ese coste sería opcional.
+
+## Monetización
+
+No se prevé una monetización de este proyecto ya que es software libre
+distribuido gratuitamente. Si consiguiera la adopción deseada, sería tal vez
+posible monetizarlo con contratos de soporte o desarrollo, o tal vez
+relicenciando el código para compañías con productos propietarios que no
+quieran adherirse a los términos de la \Gls{GPL}.
+
+Sin embargo, el autor no es demasiado optimista al respecto, ya que mantiene
+software muy utilizado desinteresadamente (si bien es cierto que nunca ha
+tratado de obtener rédito económico de ello).
