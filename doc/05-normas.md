@@ -138,11 +138,21 @@ conveniente a la hora de exponer la librería a Android.
 
 Durante el desarrollo, se han tenido que investigar múltiples problemas y
 situaciones inesperadas relacionadas con \gls{wpa_supplicant}, y se han
-[enviado](https://lists.infradead.org/pipermail/hostap/2025-May/043428.html) y
-aceptado
-[varias](https://lists.infradead.org/pipermail/hostap/2025-January/043247.html)
-[mejoras](https://lists.infradead.org/pipermail/hostap/2025-May/043429.html) a
-este software escrito en C.
+enviado y aceptado varias mejoras a este software escrito en C:
+
+ * [P2P: Provide better failure reason for group formation
+ errors](https://lists.infradead.org/pipermail/hostap/2025-January/043247.html):
+ Mejora el reporte de errores de wpa_supplicant.
+ * [dbus: Expose P2PDevice's own device
+ address](https://lists.infradead.org/pipermail/hostap/2025-May/043428.html):
+ Beneficioso para evitar colisiones durante la asociación de direcciones.
+ * [dbus: Expose P2P auto_join
+ behavior](https://lists.infradead.org/pipermail/hostap/2025-May/043429.html):
+ Permite unirse automáticamente a un grupo existente.
+ * [dbus: Expose group's GO device
+ address](https://lists.infradead.org/pipermail/hostap/2025-August/043695.html):
+ Expone la dirección del *Group Owner* de WiFi Direct, para poder realizar el
+ intercambio de claves en menos pasos.
 
 ## Herramientas metodológicas
 

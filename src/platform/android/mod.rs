@@ -14,8 +14,9 @@ use jni_sys::{jboolean, jlong};
 
 use crate::{
     protocol::{
-        self, identity::OwnIdentity, ControlMessage, P2pPorts, PeerAddress, PeerGroupInfo,
-        PeerIdentity, PeerOwnIdentifier, PhysiscalPeerIdentity, GO_CONTROL_PORT,
+        self, identity::OwnIdentity, key_exchange::KeyExchange, ControlMessage, P2pPorts,
+        PeerAddress, PeerGroupInfo, PeerIdentity, PeerOwnIdentifier, PhysiscalPeerIdentity,
+        GO_CONTROL_PORT,
     },
     utils::{self, trivial_error},
     GenericResult, GroupId, P2PSession, P2PSessionListener, PeerId,
@@ -59,6 +60,7 @@ enum JavaNotification {
     GroupStarted {
         iface_name: String,
         is_go: bool,
+        go_device_address: MacAddr,
         go_ip_address: IpAddr,
     },
     // TODO: We're going to need some sort of identifier here.
@@ -84,7 +86,9 @@ struct AndroidPeerData;
 type Peer = protocol::PeerInfo<AndroidPeerData>;
 
 #[derive(Debug)]
-struct AndroidGroupData;
+struct AndroidGroupData {
+    go_device_address: MacAddr,
+}
 type Group = protocol::GroupInfo<AndroidGroupData>;
 
 #[derive(Debug, Default)]
@@ -366,8 +370,9 @@ impl Session {
                             physical_id,
                             logical_id,
                             ports,
+                            key_exchange_public_key,
                         } => {
-                            let peer_id = {
+                            let (peer_id, key_exchange_public_key) = {
                                 let mut peers = session.peers.write();
                                 let mut result = None;
                                 for (id, peer) in peers.map.iter_mut_with_handles() {
@@ -387,13 +392,21 @@ impl Session {
                                             break;
                                         }
                                         peer.groups.push(group_id);
+                                        if let Err(e) =
+                                            peer.key_exchange.finish(&key_exchange_public_key)
+                                        {
+                                            error!("Couldn't finish key exchange with {id:?}: {e}");
+                                        }
                                         peer.identity.logical = Some(logical_id);
-                                        result = Some(PeerId(id));
+                                        result = Some((
+                                            PeerId(id),
+                                            peer.key_exchange.export_public_key(),
+                                        ));
                                         break;
                                     }
                                 }
                                 match result {
-                                    Some(id) => id,
+                                    Some(r) => r,
                                     None => {
                                         error!("Couldn't associate with {physical_id:?}");
                                         continue;
@@ -427,6 +440,7 @@ impl Session {
                                             physical_id: session.own_physical_id(),
                                             logical_id: session.identity.to_public(),
                                             ports: own_ports,
+                                            key_exchange_public_key,
                                         },
                                     )
                                     .await;
@@ -499,8 +513,13 @@ impl Session {
     async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
         trace!("Session::group_task({group_id:?})");
 
-        let (is_go, go_ip, scope_id) = match session.groups.read().get(group_id.0) {
-            Some(g) => (g.is_go, g.go_ip_address, g.scope_id),
+        let (is_go, go_ip, scope_id, go_dev_addr) = match session.groups.read().get(group_id.0) {
+            Some(g) => (
+                g.is_go,
+                g.go_ip_address,
+                g.scope_id,
+                g.data.go_device_address,
+            ),
             None => {
                 error!("Didn't find {group_id:?} on group_task start!");
                 return Err(trivial_error!("Didn't find group on group_task start!"));
@@ -529,10 +548,20 @@ impl Session {
 
         trace!(" > go = {is_go}, ports = {my_ports:?}, go_ip = {go_ip:?}");
         if !is_go {
+            let key_exchange_public_key = {
+                let peers = session.peers.read();
+                let id = match peers.mac_to_id.get(&go_dev_addr) {
+                    Some(i) => i,
+                    None => return Err(trivial_error!("Couldn't find GO in peer list?")),
+                };
+                let key = peers.map[id.0].key_exchange.export_public_key();
+                key
+            };
             let control_message = ControlMessage::Associate {
                 physical_id: session.own_physical_id(),
                 logical_id: session.identity.to_public(),
                 ports: my_ports,
+                key_exchange_public_key,
             };
             tokio::try_join!(
                 Self::listen_to_peer_messages(
@@ -602,6 +631,7 @@ impl Session {
                                     physical: identity,
                                     logical: None,
                                 },
+                                key_exchange: KeyExchange::new().unwrap(),
                                 groups: Vec::new(),
                                 data: AndroidPeerData,
                             }));
@@ -661,6 +691,7 @@ impl Session {
                 JavaNotification::GroupStarted {
                     iface_name,
                     is_go,
+                    go_device_address,
                     go_ip_address,
                 } => {
                     let scope_id = unsafe {
@@ -678,7 +709,7 @@ impl Session {
                             is_go,
                             peers: Default::default(),
                             group_task: OnceLock::new(),
-                            data: AndroidGroupData,
+                            data: AndroidGroupData { go_device_address },
                         });
                         let id = GroupId(handle);
                         groups.get_mut(handle).unwrap().group_task.get_or_init(|| {
@@ -891,6 +922,7 @@ impl Session {
             .send(JavaNotification::GroupStarted {
                 is_go,
                 iface_name,
+                go_device_address,
                 go_ip_address,
             })
             .unwrap();

@@ -20,6 +20,7 @@ use crate::{
 
 use futures_lite::StreamExt;
 use log::{error, trace, warn};
+use macaddr::MacAddr;
 use parking_lot::RwLock;
 use std::{
     collections::HashMap,
@@ -58,6 +59,8 @@ struct DbusGroupData {
     iface_path: OwnedObjectPath,
     /// Path of the group.
     path: OwnedObjectPath,
+    /// Dev address of the GO
+    go_dev_addr: MacAddr,
 }
 
 type Group = GroupInfo<DbusGroupData>;
@@ -387,9 +390,10 @@ impl Session {
                         ControlMessage::Associate {
                             physical_id,
                             logical_id,
+                            key_exchange_public_key,
                             ports,
                         } => {
-                            let peer_id = {
+                            let (peer_id, key_exchange_public_key) = {
                                 let mut peers = session.peers.write();
                                 let mut result = None;
                                 for (id, peer) in peers.iter_mut_with_handles() {
@@ -410,12 +414,20 @@ impl Session {
                                         }
                                         peer.groups.push(group_id);
                                         peer.identity.logical = Some(logical_id);
-                                        result = Some(PeerId(id));
+                                        if let Err(e) =
+                                            peer.key_exchange.finish(&key_exchange_public_key)
+                                        {
+                                            error!("Failed to finish key exchange ({:?})", e);
+                                        }
+                                        result = Some((
+                                            PeerId(id),
+                                            peer.key_exchange.export_public_key(),
+                                        ));
                                         break;
                                     }
                                 }
                                 match result {
-                                    Some(id) => id,
+                                    Some(r) => r,
                                     None => {
                                         error!("Couldn't associate with {physical_id:?}");
                                         continue;
@@ -448,6 +460,7 @@ impl Session {
                                         ControlMessage::Associate {
                                             physical_id: session.own_phy_id.clone(),
                                             logical_id: session.identity.to_public(),
+                                            key_exchange_public_key,
                                             ports: own_ports,
                                         },
                                     )
@@ -521,13 +534,20 @@ impl Session {
     async fn group_task(session: Arc<Self>, group_id: GroupId) -> GenericResult<()> {
         trace!("Session::group_task({group_id:?})");
 
-        let (is_go, go_ip, scope_id, proxy) = match session.groups.read().get(group_id.0) {
-            Some(g) => (g.is_go, g.go_ip_address, g.scope_id, g.data.proxy.clone()),
-            None => {
-                error!("Didn't find {group_id:?} on group_task start!");
-                return Err(trivial_error!("Didn't find group on group_task start!"));
-            }
-        };
+        let (is_go, go_ip, go_dev_addr, scope_id, proxy) =
+            match session.groups.read().get(group_id.0) {
+                Some(g) => (
+                    g.is_go,
+                    g.go_ip_address,
+                    g.data.go_dev_addr,
+                    g.scope_id,
+                    g.data.proxy.clone(),
+                ),
+                None => {
+                    error!("Didn't find {group_id:?} on group_task start!");
+                    return Err(trivial_error!("Didn't find group on group_task start!"));
+                }
+            };
 
         let (control_listener, p2p_listener) = tokio::try_join!(
             TcpListener::bind(SocketAddrV6::new(
@@ -551,10 +571,27 @@ impl Session {
 
         trace!(" > go = {is_go}, ports = {my_ports:?}, go_ip = {go_ip:?}");
         if !is_go {
+            let key_exchange_public_key = {
+                trace!(" > GO dev addr is {}", go_dev_addr);
+                let peers = session.peers.read();
+                let id = PeerOwnIdentifier::DevAddr(go_dev_addr.into());
+                let key = peers.iter().find_map(|p| {
+                    p.identity
+                        .physical
+                        .matches(&id)
+                        .then(|| p.key_exchange.export_public_key())
+                });
+                match key {
+                    Some(key) => key,
+                    None => return Err(trivial_error!("Couldn't find GO by dev addr")),
+                }
+            };
+
             let control_message = ControlMessage::Associate {
                 physical_id: session.own_phy_id.clone(),
                 logical_id: session.identity.to_public(),
                 ports: my_ports,
+                key_exchange_public_key,
             };
             tokio::try_join!(
                 Self::listen_to_peer_messages(
@@ -569,7 +606,7 @@ impl Session {
                     group_id,
                     scope_id,
                     my_ports,
-                    is_go
+                    is_go,
                 ),
                 async move {
                     trace!("Trying to send control message to {go_ip:?}");
@@ -635,7 +672,7 @@ impl Session {
                 group_id,
                 scope_id,
                 my_ports,
-                is_go
+                is_go,
             ),
         )?;
         Ok(())
@@ -757,6 +794,7 @@ impl Session {
                                     physical: physical_identity,
                                     logical: None,
                                 },
+                                key_exchange: protocol::key_exchange::KeyExchange::new().unwrap(),
                                 groups: Vec::new(),
                                 data: DbusPeerData {
                                     proxy,
@@ -896,6 +934,13 @@ impl Session {
                     };
                     trace!("Group BSSID (GO interface address) is {go_iface_addr:?}");
 
+                    let go_dev_addr = group.go_device_address().await?;
+                    let Some(go_dev_addr) = utils::to_mac_addr(&go_dev_addr) else {
+                        error!("Expected a valid mac address, got {group_bssid:?}");
+                        continue;
+                    };
+                    trace!("Group GO dev address is {go_dev_addr:?}");
+
                     let is_go = props.get("role") == Some(&Value::from("GO"));
                     let id = {
                         let mut groups = session.groups.write();
@@ -904,6 +949,7 @@ impl Session {
                             iface,
                             iface_path: iface_path.into(),
                             path: group_path.into(),
+                            go_dev_addr,
                         };
                         let handle = groups.insert(Group {
                             go_ip_address: IpAddr::V6(utils::mac_addr_to_local_link_address(

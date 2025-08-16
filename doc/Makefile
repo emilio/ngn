@@ -31,11 +31,7 @@ build/pandoc-macros.tex: res/pandoc-macros.md res/pandoc-macros.tex.in
 
 build/%.tex: %.md res/pandoc-minted.py
 	@mkdir -p $(@D)
-	pandoc $< --filter mermaid-filter --filter res/pandoc-minted.py -o $@
-
-build/%.tex: %.md res/pandoc-minted.py
-	@mkdir -p $(@D)
-	pandoc $< --filter mermaid-filter --filter res/pandoc-minted.py -o $@
+	pandoc $< --filter res/pandoc-minted.py -o $@
 
 build/%.pdf: %.mmd
 	@mkdir -p $(@D)

@@ -48,6 +48,10 @@ pub trait Group {
     #[zbus(property)]
     fn members(&self) -> zbus::Result<Vec<zbus::zvariant::OwnedObjectPath>>;
 
+    /// GODeviceAddress property
+    #[zbus(property, name = "GODeviceAddress")]
+    fn go_device_address(&self) -> zbus::Result<Vec<u8>>;
+
     /// PSK property
     #[zbus(property, name = "PSK")]
     fn psk(&self) -> zbus::Result<Vec<u8>>;

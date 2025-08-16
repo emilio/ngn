@@ -23,7 +23,13 @@ use tokio::{
 };
 
 pub mod identity;
-use identity::{LogicalPeerIdentity, MaybeInvalidSignature, OwnIdentity};
+use identity::{LogicalPeerIdentity, OwnIdentity};
+
+pub mod signing;
+use signing::MaybeInvalidSignature;
+
+pub mod encryption;
+pub mod key_exchange;
 
 const MAGIC: u16 = 0xdead;
 const CURRENT_VERSION: u16 = 1;
@@ -107,7 +113,7 @@ pub async fn read_peer_message(
     source_address: &SocketAddr,
 ) -> GenericResult<Vec<u8>> {
     // TODO: If zeroing somehow shows up it can be optimized via MaybeUninit + unsafe.
-    let mut signature = MaybeInvalidSignature([0; identity::SIGNATURE_LEN]);
+    let mut signature = MaybeInvalidSignature([0; signing::SIGNATURE_LEN]);
     let buf = match read_binary_message(reader, Some(&mut signature)).await {
         Ok(buf) => buf,
         Err(e) => {
@@ -115,7 +121,7 @@ pub async fn read_peer_message(
             return Err(e);
         }
     };
-    if let Err(e) = identity::verify(&id.key, &signature, &buf) {
+    if let Err(e) = signing::verify(&id.key, &signature, &buf) {
         log_error(&*e, source_address);
         return Err(e);
     }
@@ -134,7 +140,7 @@ pub fn log_error(e: &(dyn std::error::Error + 'static), source_address: &SocketA
 async fn write_binary_message(
     mut writer: impl AsyncWriteExt + Unpin,
     msg: &[u8],
-    signing_key: Option<&identity::KeyPair>,
+    signing_key: Option<&signing::KeyPair>,
 ) -> GenericResult<()> {
     let Ok(len) = u32::try_from(msg.len()) else {
         return Err(trivial_error!("Huge length for binary message"));
@@ -145,7 +151,7 @@ async fn write_binary_message(
     writer.write_u16(CURRENT_VERSION).await?;
     writer.write_u32(len).await?;
     if let Some(k) = signing_key {
-        let signature = identity::sign(k, msg);
+        let signature = signing::sign(k, msg);
         writer.write_all(signature.as_ref()).await?;
     }
     // Write the message.
@@ -251,6 +257,8 @@ pub enum PeerOwnIdentifier {
 pub struct PeerInfo<BackendData> {
     /// Identity of this peer.
     pub identity: PeerIdentity,
+    /// Key exchange information for this peer.
+    pub key_exchange: key_exchange::KeyExchange,
     /// Current list of groups the peer is connected to.
     pub groups: Vec<GroupId>,
     /// Back-end specific data.
@@ -361,5 +369,7 @@ pub enum ControlMessage {
         logical_id: LogicalPeerIdentity,
         /// The ports the peer is listening to.
         ports: P2pPorts,
+        /// The public ECDH key.
+        key_exchange_public_key: key_exchange::MaybeInvalidPublicKey,
     },
 }
