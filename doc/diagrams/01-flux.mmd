@@ -1,0 +1,14 @@
+flowchart TD
+  A[Grupo creado o unido] --> B[Soy Group Owner?]
+  A --> COMM[Establece canal de comunicación en puerto disponible]
+  B -->|Si| GO[Group Owner]
+  B -->|No| C[Cliente]
+  GO -->|puerto 9001| CONTROL[Establece canal de control]
+  COMM --> MSG1[Recepción de mensaje] --> MSG2[Validar firma y desencriptar] --> MSG3[Notificar Listener::peer_messaged]
+  C -->|puerto disponible| CONTROL
+  C --> REG1[Registro con el GO]
+  CONTROL --> RECV[Recepción de registro]
+  RECV --> RECV1[Soy GO?]
+       -->|Si| REGC[Registro con cliente]
+       -->BC[Broadcast a otros clientes]
+  RECV --> NOT1[Notificar Listener::peer_joined_group]

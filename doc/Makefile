@@ -1,5 +1,7 @@
 MD_TARGETS := $(wildcard *.md)
+MERMAID_TARGETS := $(wildcard diagrams/*.mmd)
 TEX_TARGETS := $(wildcard *.tex) $(MD_TARGETS:%.md=build/%.tex) 
+PDF_TARGETS := $(wildcard diagrams/*.pdf) $(MERMAID_TARGETS:%.mmd=build/%.pdf)
 
 .PHONY: build
 build: build/main.pdf
@@ -12,7 +14,7 @@ clean:
 cleanbuild: clean build
 
 # We assume all resources are used
-build/main.pdf: $(TEX_TARGETS) build/pandoc-macros.tex $(wildcard res/*) bibliography.bib
+build/main.pdf: $(TEX_TARGETS) $(PDF_TARGETS) build/pandoc-macros.tex $(wildcard res/*) bibliography.bib
 	@mkdir -p $(@D)
 	latexmk -bibtex -pdf -jobname=build/main main
 
@@ -29,4 +31,12 @@ build/pandoc-macros.tex: res/pandoc-macros.md res/pandoc-macros.tex.in
 
 build/%.tex: %.md res/pandoc-minted.py
 	@mkdir -p $(@D)
-	pandoc $< --filter res/pandoc-minted.py -o $@
+	pandoc $< --filter mermaid-filter --filter res/pandoc-minted.py -o $@
+
+build/%.tex: %.md res/pandoc-minted.py
+	@mkdir -p $(@D)
+	pandoc $< --filter mermaid-filter --filter res/pandoc-minted.py -o $@
+
+build/%.pdf: %.mmd
+	@mkdir -p $(@D)
+	mmdc --pdfFit -i $< -o $@
