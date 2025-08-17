@@ -1,6 +1,5 @@
 //! Key exchange using ECDH.
 
-use std::sync::Arc;
 use crate::protocol::encryption::Keys;
 use crate::GenericResult;
 use bincode::{Decode, Encode};
@@ -8,7 +7,9 @@ pub use ring::agreement::EphemeralPrivateKey as PrivateKey;
 use ring::agreement::X25519;
 pub use ring::agreement::{PublicKey, UnparsedPublicKey};
 use ring::error::Unspecified;
+use std::sync::Arc;
 
+use self::KeyExchangeState as State;
 use crate::trivial_error;
 
 pub const PUBLIC_KEY_LEN: usize = 32;
@@ -22,8 +23,6 @@ enum KeyExchangeState {
     Completed(Arc<super::encryption::Keys>),
     Errored,
 }
-
-use self::KeyExchangeState as State;
 
 #[derive(Debug)]
 pub struct KeyExchange {
