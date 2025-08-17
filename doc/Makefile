@@ -1,7 +1,7 @@
 MD_TARGETS := $(wildcard *.md)
-MERMAID_TARGETS := $(wildcard diagrams/*.mmd)
+MERMAID_TARGETS := $(wildcard images/*.mmd)
 TEX_TARGETS := $(wildcard *.tex) $(MD_TARGETS:%.md=build/%.tex) 
-PDF_TARGETS := $(wildcard diagrams/*.pdf) $(MERMAID_TARGETS:%.mmd=build/%.pdf)
+PDF_TARGETS := $(wildcard images/*.pdf) $(MERMAID_TARGETS:%.mmd=build/%.pdf)
 
 .PHONY: build
 build: build/main.pdf
@@ -31,7 +31,7 @@ build/pandoc-macros.tex: res/pandoc-macros.md res/pandoc-macros.tex.in
 
 build/%.tex: %.md res/pandoc-minted.py
 	@mkdir -p $(@D)
-	pandoc $< --filter res/pandoc-minted.py -o $@
+	pandoc --table-caption-position=below $< --filter res/pandoc-minted.py -o $@
 
 build/%.pdf: %.mmd
 	@mkdir -p $(@D)

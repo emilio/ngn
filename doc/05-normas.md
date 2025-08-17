@@ -13,6 +13,7 @@ En este apartado se explica la metodología de desarrollo software seguida, desd
 un punto de vista técnico.
 
 ## Metodología ágil: Scrum
+\label{subsec:scrum}
 
 Dadas las limitaciones temporales (trabajo a tiempo completo del autor y
 familia), se ha optado por usar una metodología ágil ligera (Scrum), ya que
@@ -63,6 +64,7 @@ historia, una unidad de medida relativa que mide el esfuerzo necesario para
 completar una tarea comparándola con otras tareas del proyecto.
 
 # Herramientas
+\label{sec:tooling}
 
 <!--
   Se describirán de forma breve las herramientas usadas para la documentación y

@@ -223,7 +223,7 @@ pub const GO_CONTROL_PORT: u16 = 9001;
 
 El resto de puertos son dinámicos.
 
-![Flujo de control al conectarse a un nuevo grupo](build/diagrams/01-flux.pdf)
+![Flujo de control al conectarse a un nuevo grupo](build/images/01-flux.pdf)
 
 # Criptografía
 
