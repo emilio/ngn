@@ -324,8 +324,13 @@ impl KeyExchange {
         let result = std::mem::replace(&mut self.state, State::Errored);
         self.state = match result {
             KeyExchangeState::InProgress(private) => {
-                let peer_key = UnparsedPublicKey::new(&X25519, &peer_key.0[..]);
-                State::Completed(Arc::new(Keys::from_shared_secret(private, peer_key)?))
+                let peer_key = UnparsedPublicKey::new(
+                    &X25519,
+                    &peer_key.0[..]
+                );
+                State::Completed(Arc::new(
+                    Keys::from_shared_secret(private, peer_key)?
+                ))
             }
             _ => unreachable!(),
         };
