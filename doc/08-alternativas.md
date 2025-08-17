@@ -116,14 +116,15 @@ biblioteca de Brian Smith que usa código de
 [BoringSSL](https://boringssl.googlesource.com/boringssl) (que a su vez es un
 fork the [OpenSSL](https://www.openssl.org/)).
 
-Se barajó usar las dos librerías mencionadas anteriormente directamente, [libsodium](https://doc.libsodium.org),
+Se barajó usar las dos bibliotecas mencionadas anteriormente directamente,
+[libsodium](https://doc.libsodium.org),
 [RustCrypto](https://github.com/rustcrypto), y cosas más avanzadas como
 [mls-rs](https://crates.io/crates/mls-rs), que implementa el protocolo
 \gls{MLS} \cite{rfc9420}.
 
 Se eligió ring por su énfasis en ser difícil de usar mal. Dicho eso, la
-librería criptográfica no es difícil de cambiar, y adaptar MLS u otra librería
-no debería ser un desafío.
+biblioteca criptográfica no es difícil de cambiar, y adaptar MLS u otra
+biblioteca no debería ser un desafío.
 
 No se consideró implementar las primitivas criptográficas por la falta de
 tiempo, y lo [común que es hacerlo

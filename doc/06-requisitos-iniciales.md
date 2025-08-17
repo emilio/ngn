@@ -46,5 +46,5 @@ Así, se han definido los siguientes requisitos no funcionales para el sistema:
   1. **Portabilidad**: Accesibilidad desde diferentes plataformas y sistemas operativos.
   2. **Extensibilidad**: Facilidad para añadir nuevas plataformas y transportes físicos.
   3. **Seguridad**: Identificación y cifrado de mensajes independiente de la capa física.
-  4. **Accesibilidad**: La librería deberá funcionar con dispositivos
+  4. **Accesibilidad**: La biblioteca deberá funcionar con dispositivos
      accesibles / no requerir hardware especial.

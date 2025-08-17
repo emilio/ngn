@@ -98,21 +98,21 @@ name = "dbus"
 crate-type = ["bin"]
 ```
 
-El código de Android también se divide en dos. La librería, en
+El código de Android también se divide en dos. La biblioteca, en
 `src/platform/android`, con su parte de Java / Kotlin en
 `src/platform/android/src/main/java/io/crisal/ngn`, y la aplicación de
 demostración en `examples/android`.
 
 Por conveniencia, se ha usado [`tokio`](https://tokio.rs/) como
 *[runtime](https://www.ncameron.org/blog/what-is-an-async-runtime/)* asíncrona.
-El uso de tokio en la librería no es particularmente especial y se podrían
+El uso de tokio en la biblioteca no es particularmente especial y se podrían
 soportar varias *runtimes* sin problema.
 
 # Interfaces y estructuras principales
 
 ## `P2PSession` y `P2PSessionListener`
 
-La interfaz principal de la librería está en `src/lib.rs`, donde se define el
+La interfaz principal de la biblioteca está en `src/lib.rs`, donde se define el
 \gls{trait} `P2PSession`, cuya implementación varía por plataforma, y es la que
 expone métodos para iniciar el descubrimiento de dispositivos
 (`discover_peers`), conectarse (`connect_to_peer`) y enviar mensajes
@@ -209,9 +209,10 @@ expone, y aunque puedes [solicitar el uso de
 IPv6](https://developer.android.com/reference/android/net/wifi/p2p/WifiP2pConfig#GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL),
 es una API bastante reciente.
 
-Por lo tanto la solución que se adoptó establece **dos canales**, un canal de
-*control* no encriptado, para la gestión del grupo e intercambio de claves,
-y uno para la comunicación cifrada y firmada de mensajes.
+Por lo tanto la solución que se adoptó establece **dos canales** por cada
+cliente, un canal de *control* no cifrado para la gestión del grupo e
+intercambio de claves, y uno para la comunicación cifrada y firmada de
+mensajes entre dispositivos.
 
 El único puerto que tiene que ser conocido de antemano es el del canal de
 control del *Group Owner*, el cual está definido en `src/protocol/mod.rs`:

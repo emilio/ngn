@@ -35,7 +35,7 @@ en el *Anexo I. Especificaciones del sistema*.
 
 ## Restricciones técnicas: entorno de explotación
 
-La librería ha de ser multiplataforma, lo cual ha supuesto una serie de
+La biblioteca ha de ser multiplataforma, lo cual ha supuesto una serie de
 restricciones técnicas, como el uso de lenguajes que soporten todas las
 plataformas necesarias.
 
@@ -45,7 +45,7 @@ determinadas APIs de esos sistemas operativos.
 ## Restricciones técnicas: Transporte inicial y limitaciones del sistema operativo
 
 A la hora de realizar la elección de qué capa de transporte usar inicialmente
-para esta librería, se eligió WiFi Direct por una variedad de razones:
+para esta biblioteca, se eligió WiFi Direct por una variedad de razones:
 
  * Disponibilidad en Android \cite{wifi-direct-android} y Linux \cite{wifi-direct-linux}.
  * Mayor rango de alcance comparado con Bluetooth y Bluetooth LE \cite{wifi-direct-range}.
@@ -76,7 +76,7 @@ aunque se ha enviado un
 tests para hacerlo.
 
 Esta ID sería útil, porque es la que otros dispositivos y la capa de transporte
-ven, pero como compromiso, la librería soporta asociarse por nombre
+ven, pero como compromiso, la biblioteca soporta asociarse por nombre
 inicialmente (aunque eso por supuesto tiene más posibilidades de colisiones).
 
 \clearpage
@@ -152,12 +152,12 @@ interacción.
 
 Sin embargo Android no soporta ese caso de uso, y requiere una interacción la
 primera vez que intentas conectarte a un dispositivo. Por lo tanto la
-información que la librería puede exponer inicialmente sobre el dispositivo es
+información que la biblioteca puede exponer inicialmente sobre el dispositivo es
 mucho más limitada.
 
 ## Restricciones de usabilidad: Interacción entre `wpa_supplicant` y `NetworkManager`
 
-Actualmente, usar la librería via `wpa_supplicant` requiere desactivar
+Actualmente, usar la biblioteca via `wpa_supplicant` requiere desactivar
 [`NetworkManager`](https://networkmanager.dev). Esto es porque `NetworkManager`
 ve una interfaz que no conoce y la desactiva. Se ha
 [reportado](https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues/1804)
@@ -175,13 +175,13 @@ anteriormente, que han consumido más tiempo de desarrollo del esperado.
 
 De ellas, los grupos lógicos es la mayor omisión, pero se pueden implementar
 sobre la infraestructura existente sin demasiado esfuerzo, o incluso por encima
-de la librería.
+de la biblioteca.
 
-En términos de la adopción esperada, lo ideal sería que esta librería se
+En términos de la adopción esperada, lo ideal sería que esta biblioteca se
 convirtiera en un proyecto viable para la adopción de este tipo de tecnologías
 a gran escala.
 
-En la práctica, la librería es bastante útil en su estado actual para
+En la práctica, la biblioteca es bastante útil en su estado actual para
 aplicaciones P2P sencillas. Sin embargo, hacerla útil para redes a gran escala
 requeriría bastante trabajo extra, descrito a continuación.
 
@@ -190,7 +190,7 @@ requeriría bastante trabajo extra, descrito a continuación.
  * Coordinación con `NetworkManager` para evitar interacciones no deseadas.
 
  * Coordinación con distribuciones para proveer acceso a este mecanismo a la
-   librería. Esto probablemente requiera una aplicación o servicio
+   biblioteca. Esto probablemente requiera una aplicación o servicio
    "privilegiado" para gestionar las conexiones.
 
  * Coordinación con distribuciones para que los servidores DHCP usen

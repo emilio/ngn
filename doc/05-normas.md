@@ -84,7 +84,7 @@ implementación, metodológicas, de documentación y prototipado, y otras.
 \label{subsec:lang}
 
 Se ha elegido [Rust](https://rust-lang.org) para la implementación principal
-de la librería. Rust es un lenguaje de propósito general que tiene varias
+de la biblioteca. Rust es un lenguaje de propósito general que tiene varias
 propiedades muy interesantes para un proyecto de este tipo:
 
  * **Multi-plataforma**: Rust soporta una amplia variedad de arquitecturas y
@@ -104,7 +104,7 @@ propiedades muy interesantes para un proyecto de este tipo:
 
 El autor de este TFG además está bastante familiarizado con Rust y la
 interoperabilidad con otros lenguajes (siendo este el mantenedor de varias
-librerías muy populares para este propósito como
+bibliotecas muy populares para este propósito como
 [bindgen](https://github.com/rust-lang/rust-bindgen) y
 [cbindgen](https://github.com/mozilla/cbindgen), por lo que tener que
 interoperar con otros lenguajes para las diferentes plataformas no parecía un
@@ -134,7 +134,7 @@ Kotlin, via la \gls{JNI}.
 
 La \gls{JNI} está mejor documentada para Java que para Kotlin. Kotlin y Java
 interoperan de forma casi transparente, lo cual lo hizo una decisión más
-conveniente a la hora de exponer la librería a Android.
+conveniente a la hora de exponer la biblioteca a Android.
 
 ### Lenguaje de programación: C
 

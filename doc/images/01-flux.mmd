@@ -4,7 +4,7 @@ flowchart TD
   B -->|Si| GO[Group Owner]
   B -->|No| C[Cliente]
   GO -->|puerto 9001| CONTROL[Establece canal de control]
-  COMM --> MSG1[Recepción de mensaje] --> MSG2[Validar firma y desencriptar] --> MSG3[Notificar Listener::peer_messaged]
+  COMM --> MSG1[Recepción de mensaje] --> MSG2[Validar firma y descifrar mensaje] --> MSG3[Notificar Listener::peer_messaged]
   C -->|puerto disponible| CONTROL
   C --> REG1[Registro con el GO]
   CONTROL --> RECV[Recepción de registro]

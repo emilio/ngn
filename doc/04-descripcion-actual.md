@@ -17,7 +17,7 @@ A continuación se exponen varias tecnologías en uso o desarrollo relacionadas
 con el proyecto, divididas en aplicaciones orientadas a dispositivos comunes
 (basadas en Wifi Direct o Bluetooth), software que necesita hardware menos
 común como radios (y por lo tanto dirigido a usuarios más especializados),
-y librerías / SDKs dirigidas a desarrolladores.
+y bibliotecas / SDKs dirigidas a desarrolladores.
 
 Finalmente, se hace una revisión a la implementación de Wifi Direct usada por
 Android y Linux, ya que durante este trabajo he usado dicha tecnología para el
@@ -80,7 +80,7 @@ seguras de comunicación, sin necesidad de servidores externos
 
 ## Menciones ilustres
 
-Dentro del ecosistema de comunicación peer-to-peer, existen algunas librerías
+Dentro del ecosistema de comunicación peer-to-peer, existen algunas bibliotecas
 con funcionalidad interesante, pero que no son directamente comparables a lo
 que queremos hacer, porque no se encargan del descubrimiento de dispositivos,
 es decir, tienes que saber por adelantado el dispositivo al que te quieres
@@ -97,7 +97,7 @@ infraestructura.
 
 ### iroh
 
-*iroh* \cite{iroh} es una librería similar para establecer comunicación directa
+*iroh* \cite{iroh} es una biblioteca similar para establecer comunicación directa
 y un canal via \gls{QUIC} entre dispositivos a través de internet. Dadas dos
 direcciones IP, trata de conectarlas directamente, haciendo \gls{hole-punching}
 y fallback a un relay si es necesario.
