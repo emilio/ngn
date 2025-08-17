@@ -108,13 +108,14 @@ pub async fn read_control_message(
 // TODO: In the future use OwnIdentity to also decrypt, not only check the signature from the peer.
 pub async fn read_peer_message(
     _: &OwnIdentity,
+    encryption_keys: &encryption::Keys,
     id: &LogicalPeerIdentity,
     reader: impl AsyncReadExt + Unpin,
     source_address: &SocketAddr,
 ) -> GenericResult<Vec<u8>> {
     // TODO: If zeroing somehow shows up it can be optimized via MaybeUninit + unsafe.
     let mut signature = MaybeInvalidSignature([0; signing::SIGNATURE_LEN]);
-    let buf = match read_binary_message(reader, Some(&mut signature)).await {
+    let mut buf = match read_binary_message(reader, Some(&mut signature)).await {
         Ok(buf) => buf,
         Err(e) => {
             log_error(&*e, source_address);
@@ -124,6 +125,16 @@ pub async fn read_peer_message(
     if let Err(e) = signing::verify(&id.key, &signature, &buf) {
         log_error(&*e, source_address);
         return Err(e);
+    }
+    match encryption_keys.decrypt_in_place(&mut buf) {
+        Ok(msg) => {
+            let len = msg.len();
+            buf.truncate(len);
+        }
+        Err(e) => {
+            error!("Failed to decrypt message from {source_address:?}: {e}");
+            return Err(e.into());
+        }
     }
     Ok(buf)
 }
@@ -141,7 +152,20 @@ async fn write_binary_message(
     mut writer: impl AsyncWriteExt + Unpin,
     msg: &[u8],
     signing_key: Option<&signing::KeyPair>,
+    encryption_keys: Option<&encryption::Keys>,
 ) -> GenericResult<()> {
+    let msg = match encryption_keys {
+        Some(k) => {
+            let mut msg = msg.to_vec();
+            if let Err(e) = k.encrypt_in_place_append_tag(&mut msg) {
+                error!("Failed to encrypt binary message: {e}");
+                return Err(e.into());
+            }
+            std::borrow::Cow::Owned(msg)
+        },
+        None => std::borrow::Cow::Borrowed(msg),
+    };
+
     let Ok(len) = u32::try_from(msg.len()) else {
         return Err(trivial_error!("Huge length for binary message"));
     };
@@ -151,11 +175,11 @@ async fn write_binary_message(
     writer.write_u16(CURRENT_VERSION).await?;
     writer.write_u32(len).await?;
     if let Some(k) = signing_key {
-        let signature = signing::sign(k, msg);
+        let signature = signing::sign(k, &msg);
         writer.write_all(signature.as_ref()).await?;
     }
     // Write the message.
-    writer.write_all(msg).await?;
+    writer.write_all(&msg).await?;
     Ok(())
 }
 
@@ -284,6 +308,7 @@ pub fn peer_to_socket_addr(addr: IpAddr, scope_id: u32, port: u16) -> SocketAddr
 /// Send a signed (if with own identity) or unsigned (otherwise) message to a given peer address.
 pub async fn send_message(
     from: Option<&OwnIdentity>,
+    encryption_keys: Option<&encryption::Keys>,
     to: &SocketAddr,
     message: &[u8],
 ) -> GenericResult<()> {
@@ -294,23 +319,7 @@ pub async fn send_message(
             Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
         };
     let key_pair = from.map(|f| &f.key_pair);
-    write_binary_message(&mut stream, message, key_pair).await
-}
-
-/// Read a signed message from a given peer address.
-pub async fn recv_message(
-    from: Option<&OwnIdentity>,
-    to: &SocketAddr,
-    message: &[u8],
-) -> GenericResult<()> {
-    trace!("send_message_to({to:?}, {})", message.len());
-    let mut stream =
-        match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(to)).await? {
-            Ok(stream) => stream,
-            Err(e) => return Err(io::Error::new(io::ErrorKind::TimedOut, e).into()),
-        };
-    let key_pair = from.map(|f| &f.key_pair);
-    write_binary_message(&mut stream, message, key_pair).await
+    write_binary_message(&mut stream, message, key_pair, encryption_keys).await
 }
 
 /// Per group association for a given peer.

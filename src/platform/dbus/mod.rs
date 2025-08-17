@@ -288,11 +288,14 @@ impl P2PSession for Session {
     }
 
     async fn message_peer(&self, id: PeerId, message: &[u8]) -> GenericResult<()> {
-        let (peer_address, scope_id) = {
+        let (peer_address, encryption_keys, scope_id) = {
             let peers = self.peers.read();
             let groups = self.groups.read();
             let Some(peer) = peers.get(id.0) else {
                 return Err(trivial_error!("Peer was lost (stale handle?)"));
+            };
+            let Some(keys) = peer.key_exchange.encryption_keys() else {
+                return Err(trivial_error!("Key exchange hasn't finished yet?"));
             };
             // Choose one arbitrary group to connect to it.
             let Some(group_id) = peer.groups.first() else {
@@ -308,12 +311,17 @@ impl P2PSession for Session {
                     "Peer doesn't have a link local address (yet?)"
                 ));
             };
-            (info.address.clone(), group.scope_id)
+            (info.address.clone(), Arc::clone(keys), group.scope_id)
         };
         let socket_addr =
             protocol::peer_to_socket_addr(peer_address.address, scope_id, peer_address.ports.p2p);
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            protocol::send_message(Some(&self.identity), &socket_addr, message)
+            protocol::send_message(
+                Some(&self.identity),
+                Some(&encryption_keys),
+                &socket_addr,
+                message,
+            )
         })
         .await
     }
@@ -359,7 +367,7 @@ impl Session {
         let addr = protocol::peer_to_socket_addr(ip, scope_id, control_port);
         let msg = bincode::encode_to_vec(message, bincode::config::standard())?;
         utils::retry_timeout(Duration::from_secs(2), 5, || {
-            protocol::send_message(None, &addr, &msg)
+            protocol::send_message(None, None, &addr, &msg)
         })
         .await
     }
@@ -497,20 +505,28 @@ impl Session {
                 warn!("Got message from {address:?} but couldn't map that to a peer in group {group_id:?}");
                 continue;
             };
-            let Some(peer_identity) = session
-                .peers
-                .read()
-                .get(peer_id.0)
-                .and_then(|p| p.identity.logical.clone())
-            else {
-                warn!("Got message from {address:?} but haven't received his keys yet");
-                continue;
+            let (peer_identity, encryption_keys) = {
+                let peers = session.peers.read();
+                let Some(peer) = peers.get(peer_id.0) else {
+                    warn!("Got message from {address:?} but peer is gone?");
+                    continue;
+                };
+                let Some(ref peer_identity) = peer.identity.logical else {
+                    warn!("Got message from {address:?} but peer doesn't yet have a logical id?");
+                    continue;
+                };
+                let Some(keys) = peer.key_exchange.encryption_keys() else {
+                    warn!("Got message from {address:?} but key exchange hasn't finished yet?");
+                    continue;
+                };
+                (peer_identity.clone(), Arc::clone(keys))
             };
             let session = Arc::clone(&session);
             tokio::spawn(async move {
                 trace!("Incoming connection from {address:?}");
                 while let Ok(buf) = protocol::read_peer_message(
                     &session.identity,
+                    &encryption_keys,
                     &peer_identity,
                     &mut stream,
                     &address,

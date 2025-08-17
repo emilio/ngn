@@ -1,26 +1,34 @@
+use parking_lot::Mutex;
 use ring::aead::{Aad, Nonce, UnboundKey, NONCE_LEN};
 use ring::aead::{BoundKey, AES_256_GCM};
 use ring::error::Unspecified;
 
 use crate::protocol::key_exchange;
 
-// Seems most AEAD algorithms fail in presence of repeated nonces, so probably
-// worth combining randomness with a counter or so:
+// FIXME(emilio): Revisit this. Using a counter nonce works but seems like one lost message will
+// break all subsequent ones.
+//
+// Most AEAD algorithms fail in presence of repeated nonces, so probably worth combining randomness
+// with a counter or so:
 //
 //  * https://docs.rs/ring/0.17.14/src/ring/aead.rs.html#43-47
 //  * https://csrc.nist.gov/publications/detail/sp/800-38d/final
 //  * https://docs.rs/aead/0.5.2/src/aead/lib.rs.html#151
 //  * https://docs.rs/aead/0.5.2/src/aead/stream.rs.html#437
+//
+// It seems like the right way to do this would be to use LessSafeKey with a nonce given in the
+// message somehow? Or maybe the nonce is not even needed given the keys are ephemeral.
+//
+// See also the discussion in https://github.com/briansmith/ring/issues/899,
+// https://security.stackexchange.com/questions/272533/what-purpose-do-nonces-serve-in-the-tls-1-3-handshake
 pub struct NonceSequence {
-    counter: u32,
-    rand: ring::rand::SystemRandom,
+    counter: u64,
 }
 
 impl Default for NonceSequence {
     fn default() -> Self {
         Self {
             counter: 0,
-            rand: ring::rand::SystemRandom::new(),
         }
     }
 }
@@ -28,13 +36,10 @@ impl Default for NonceSequence {
 impl ring::aead::NonceSequence for NonceSequence {
     // called once for each seal operation
     fn advance(&mut self) -> Result<Nonce, Unspecified> {
-        use ring::rand::SecureRandom;
-
         let mut nonce_bytes = [0u8; NONCE_LEN];
 
         let bytes = self.counter.to_be_bytes();
-        nonce_bytes[0..4].copy_from_slice(&bytes);
-        self.rand.fill(&mut nonce_bytes[4..])?;
+        nonce_bytes[0..8].copy_from_slice(&bytes);
 
         self.counter += 1;
         Ok(Nonce::assume_unique_for_key(nonce_bytes))
@@ -47,8 +52,8 @@ pub type OpeningKey = ring::aead::OpeningKey<NonceSequence>;
 
 #[derive(Debug)]
 pub struct Keys {
-    pub encryption: SealingKey,
-    pub decryption: OpeningKey,
+    encryption: Mutex<SealingKey>,
+    decryption: Mutex<OpeningKey>,
 }
 
 impl Keys {
@@ -62,26 +67,24 @@ impl Keys {
             |shared_secret: &[u8]| shared_secret.try_into(),
         )??;
         Ok(Self {
-            encryption: SealingKey::new(
+            encryption: Mutex::new(SealingKey::new(
                 UnboundKey::new(&AES_256_GCM, &key_bytes).unwrap(),
                 NonceSequence::default(),
-            ),
-            decryption: OpeningKey::new(
+            )),
+            decryption: Mutex::new(OpeningKey::new(
                 UnboundKey::new(&AES_256_GCM, &key_bytes).unwrap(),
                 NonceSequence::default(),
-            ),
+            )),
         })
     }
 
-    pub fn encrypt_in_place_append_tag(&mut self, data: &mut Vec<u8>) -> Result<(), Unspecified> {
+    pub fn encrypt_in_place_append_tag(&self, data: &mut Vec<u8>) -> Result<(), Unspecified> {
         self.encryption
+            .lock()
             .seal_in_place_append_tag(Aad::from(b""), data)
     }
 
-    pub fn decrypt_in_place<'a>(
-        &mut self,
-        data: &'a mut [u8],
-    ) -> Result<&'a mut [u8], Unspecified> {
-        self.decryption.open_in_place(Aad::from(b""), data)
+    pub fn decrypt_in_place<'a>(&self, data: &'a mut [u8]) -> Result<&'a mut [u8], Unspecified> {
+        self.decryption.lock().open_in_place(Aad::from(b""), data)
     }
 }

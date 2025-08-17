@@ -1,5 +1,6 @@
 //! Key exchange using ECDH.
 
+use std::sync::Arc;
 use crate::protocol::encryption::Keys;
 use crate::GenericResult;
 use bincode::{Decode, Encode};
@@ -18,7 +19,7 @@ pub struct MaybeInvalidPublicKey([u8; PUBLIC_KEY_LEN]);
 #[derive(Debug)]
 enum KeyExchangeState {
     InProgress(PrivateKey),
-    Completed(super::encryption::Keys),
+    Completed(Arc<super::encryption::Keys>),
     Errored,
 }
 
@@ -55,7 +56,7 @@ impl KeyExchange {
         self.state = match result {
             KeyExchangeState::InProgress(private) => {
                 let peer_key = UnparsedPublicKey::new(&X25519, &peer_key.0[..]);
-                State::Completed(Keys::from_shared_secret(private, peer_key)?)
+                State::Completed(Arc::new(Keys::from_shared_secret(private, peer_key)?))
             }
             _ => unreachable!(),
         };
@@ -63,9 +64,9 @@ impl KeyExchange {
     }
 
     /// Returns the encryption keys for this exchange, if the exchange has finished.
-    pub fn encryption_keys(&mut self) -> Option<&mut super::encryption::Keys> {
+    pub fn encryption_keys(&self) -> Option<&Arc<super::encryption::Keys>> {
         match self.state {
-            State::Completed(ref mut k) => Some(k),
+            State::Completed(ref k) => Some(k),
             State::Errored | State::InProgress(..) => None,
         }
     }
