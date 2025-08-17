@@ -370,3 +370,6 @@ pub struct DecodableMacAddr {
     bytes: [u8; 8],
 }
 ```
+
+Esto facilita los cambios en la fase de prototipado, y evita errores
+innecesarios que inevitablemente pasan de otra forma.
