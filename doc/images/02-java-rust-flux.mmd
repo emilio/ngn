@@ -1,0 +1,14 @@
+flowchart TD
+  A1[Notificación Java - NgnSessionProxy.onPeersAvailable]
+    --> A2[ngn_session_update_peers - Session::update_peers]
+    --> A3[JavaNotification::UpdateDevices]
+    --> |En hilo de tokio| A4[Computar cambios]
+    --> |Si hay cambios| A5[Session::peers_changed_internal]
+    --> A6[Enviar información de identidad física y lógica - NgnSessionProxy.peersChanged]
+    --> A7[NgnListener.peersChanged]
+    --> |En hilo principal| A8[Actualizar interfaz]
+
+  B[Cliente nos envía su identidad - ControlMessage::Associate]
+    --> B1[Completar intercambio de claves]
+    --> |Si es necesario| B2[Enviar nuestra identidad al cliente]
+    --> A5

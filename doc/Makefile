@@ -35,4 +35,4 @@ build/%.tex: %.md res/pandoc-minted.py
 
 build/%.pdf: %.mmd
 	@mkdir -p $(@D)
-	mmdc --pdfFit -i $< -o $@
+	mmdc --width 600 --height 600 -i $< -o $@

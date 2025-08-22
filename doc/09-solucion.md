@@ -379,3 +379,187 @@ pub struct DecodableMacAddr {
 
 Esto facilita los cambios en la fase de prototipado, y evita errores
 innecesarios que inevitablemente pasan de otra forma.
+
+# Interoperabilidad con Java / Android
+
+Para interactuar con las APIs del sistema de Android, debemos usar la
+\Gls{JNI}. Esta interfaz permite a programas en C llamar a Java, y vice versa.
+
+Rust, convenientemente, también soporta la [interfaz de llamadas de
+C](TODO:rust-ffi). Se ha usado una librería pre-existente para usar tipos algo
+más convenientes llamada [jni](https://docs.rs/jni).
+
+Un ejemplo sencillo podría ser cómo inicializamos la sesión nativa.
+`ngn_session_init` devuelve un puntero nativo en un `jlong`, y
+`ngn_session_drop` lo destruye desde java cuando ya no es necesario:
+
+```rust
+impl Session {
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1init"]
+    extern "C" fn init<'l>(
+        mut env: JNIEnv<'l>,
+        _class: JClass<'l>,
+        owner: JObject<'l>,
+        device_name: JString<'l>,
+        nickname: JString<'l>,
+    ) -> jlong {
+        let session = Self::new_sync(init, Arc::new(crate::LoggerListener));
+        Arc::into_raw(session) as jlong
+    }
+
+    /// Breaks the cyclic owner <-> native listener.
+    #[export_name = "Java_io_crisal_ngn_NgnSessionProxy_ngn_1session_1drop"]
+    extern "C" fn drop<'l>(_env: JNIEnv<'l>, _class: JClass<'l>, raw: jlong) {
+        trace!("Session::drop({raw:?})");
+        let _ = unsafe { Arc::from_raw(raw as *const Self) };
+    }
+}
+```
+
+Desde Java, se utiliza como una variable más:
+
+```java
+public class NgnSessionProxy ... {
+    @Override
+    public void onDeviceInfoAvailable(@Nullable WifiP2pDevice wifiP2pDevice) {
+        // ...
+        m_native = ngn_session_init(this, wifiP2pDevice.deviceName, m_nickName);
+    }
+
+    public void messagePeer(String aMacAddress, byte[] aMessage, Function<Boolean, Void> onResult) {
+        // ...
+        ngn_session_message_peer(m_native, aMacAddress, aMessage, onResult);
+    }
+
+    @Override
+    protected void finalize() {
+        if (m_native == 0) {
+            return; // Already finalized, or not initialized.
+        }
+        ngn_session_drop(m_native);
+    }
+}
+```
+
+## Notificación de eventos de Java a Rust
+
+Como Rust usa su propio bucle de eventos via tokio, se ha usado paso de
+mensajes para comunicar notificaciones del sistema. Se utiliza un enum llamado
+`JavaNotification` que el bucle de eventos de Rust recibe via un canal
+\gls{mpsc} en `Session::run_loop`:
+
+```rust
+/// Representation of system messages that we need to handle
+#[derive(Debug)]
+enum JavaNotification {
+    UpdateDevices(Vec<PhysiscalPeerIdentity>),
+    GroupStarted {
+        iface_name: String,
+        is_go: bool,
+        go_device_address: MacAddr,
+        go_ip_address: IpAddr,
+    },
+    // ...
+}
+
+#[derive(Debug)]
+pub struct Session {
+    proxy: GlobalRef,
+    // ...
+    java_notification: mpsc::UnboundedSender<JavaNotification>,
+    /// Task handle to our run loop. Canceled and awaited on drop.
+    run_loop_task: RwLock<Option<JoinHandle<GenericResult<()>>>>,
+}
+
+impl Session {
+    async fn run_loop(
+        session: Arc<Self>,
+        mut rx: mpsc::UnboundedReceiver<JavaNotification>,
+    ) -> GenericResult<()> {
+        trace!("Session::run_loop");
+        while let Some(message) = rx.recv().await {
+            match message { ... }
+        }
+    }
+}
+```
+
+A continuación se muestra el flujo de una notificación del sistema de Android
+como un cambio en la lista de dispositivos disponibles.
+
+## Notificación de eventos de Rust a Java
+
+Rust almacena una referencia a la clase `NgnSessionProxy` cuando se crea la
+sesión nativa, y pueded llamar a Java desde cualquier hilo.
+
+Por ejemplo, cuando se recibe un mensaje, Rust invoca el método
+`NgnSessionProxy.peerChanged` dinámicamente:
+
+```rust
+impl Session {
+    fn peer_messaged_internal(
+        &self,
+        peer_id: PeerId,
+        group_id: GroupId,
+        buf: &[u8],
+    ) -> GenericResult<()> {
+        self.listener.peer_messaged(self, peer_id, group_id, buf);
+        let mut env = self.vm.attach_current_thread()?;
+        let (peer_name, peer_dev_addr, peer_logical_id) = {
+            // ...
+        };
+        let byte_array = env.byte_array_from_slice(buf)?;
+        self.call_proxy(
+            &mut env,
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[B)V",
+            "peerMessaged",
+            &[
+                (&peer_name).into(),
+                (&peer_dev_addr).into(),
+                (&peer_logical_id).into(),
+                (&byte_array).into(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    fn call_proxy<'local>(
+        &self,
+        env: &mut JNIEnv<'local>,
+        sig: &'static str,
+        method: &'static str,
+        args: &[jni::objects::JValue],
+    ) -> GenericResult<jni::objects::JValueOwned<'local>> {
+        let result = env.call_method(self.proxy.as_obj(), method, sig, args)?;
+        Ok(result)
+    }
+}
+```
+
+Este método de java es el que se encarga de procesar la notificación:
+
+```java
+public class NgnSessionProxy ...{
+    // NOTE: called via the JNI.
+    private void peerMessaged(String name, String mac_addr, String logicalId, byte[] message) {
+        m_listener.messageReceived(new Peer(name, mac_addr, logicalId), message);
+    }
+}
+```
+
+Es el código de Java el que es responsable de, si es necesario, cambiar al hilo
+principal (`activity.runOnUiThread`):
+
+```kotlin
+class Listener(val activity: MainActivity) : NgnListener() {
+    override fun messageReceived(from: Peer, content: ByteArray) {
+        super.messageReceived(from, content)
+        activity.runOnUiThread {
+            // ...
+        }
+    }
+}
+```
+
+![Ejemplo de flujo de control entre Java y Rust](build/images/02-java-rust-flux.pdf)
+
