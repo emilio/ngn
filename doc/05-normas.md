@@ -187,11 +187,6 @@ documentos de alta calidad. [...] Es el estándar de facto para la comunicación
 y publicación de documentos científicos y
 técnicos} \cite{latex}.
 
-Se consideró usar una alternativa más moderna al sistema de macros de \LaTeX
-llamada [Typst](https://typst.app/), pero el conocimiento previo de \LaTeX del
-autor, la \gls{transpilación} desde \Gls{markdown}, la más amplia documentación
-de \LaTeX, y la falta de tiempo hicieron que no mereciera la pena.
-
 ### Documentación: Pandoc
 \label{subsec:pandoc}
 
@@ -200,6 +195,13 @@ de \LaTeX, y la falta de tiempo hicieron que no mereciera la pena.
 marcado. En particular, se ha usado para usar \Gls{markdown} para la mayoría
 del contenido de la memoria y transpilarlo a \LaTeX, para su inclusión en el
 documento final.
+
+### Documentación: Mermaid
+\label{subsec:mermaid}
+
+[Mermaid](https://mermaid.js.org/) es una herramienta de software libre para
+generar diagramas a partir de texto plano. Se ha utilizado para generar los
+varios diagramas incluidos en esta memoria.
 
 ### Documentación: rustdoc
 

@@ -156,6 +156,11 @@ otros desarrolladores de forma más eficiente en un futuro.
 Para la documentación del proyecto se ha utilizado una mezcla de \LaTeX
 (\cref{subsec:latex}) y Pandoc (\cref{subsec:pandoc}).
 
+Se consideró usar una alternativa más moderna al sistema de macros de \LaTeX
+llamada [Typst](https://typst.app/), pero el conocimiento previo de \LaTeX del
+autor, la \gls{transpilación} desde \Gls{markdown}, la más amplia documentación
+de \LaTeX, y la falta de tiempo hicieron que no mereciera la pena.
+
 Se podría haber utilizado cualquier procesador de textos como [LibreOffice
 Writer](https://www.libreoffice.org/discover/writer) o [Google
 Docs](https://docs.google.com), pero usar \LaTeX y Markdown se consideró una
