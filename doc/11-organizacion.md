@@ -22,6 +22,59 @@
       funciona correctamente.
 -->
 
+La arquitectura del proyecto ha sido descrita con bastante detalle en el
+\cref{chap:solution}, por lo que se omitirá de esta sección.
+
+## Proceso de desarrollo
+
+En este apartado se describe de manera resumida el proceso de desarrollo del
+proyecto, explicando las decisiones más importantes que se han tomado, y los
+problemas que se han encontrado durante el desarrollo.
+
+### Exploración inicial
+
+Lo primero que se hizo fue realizar una [exploración
+inicial](https://github.com/emilio/android-wifip2p-test) y algo superficial de
+las capacidades de comunicación P2P de Android. Esto solo buscaba descartar
+rápidamente si esa avenida era imposible.
+
+### Capa de transporte en Linux
+\label{subsec:transport-impl}
+
+Durante las primeras reuniones con el tutor, se debatió por donde afrontar la
+implementación. En contra de la recomendación de Guillermo, y con la intención
+de obtener algo funcional desde el principio, se decidió trabajar en la capa de
+transporte.
+
+Fue bastante obvio durante el comienzo del desarrollo que trabajar directamente
+en la funcionalidad de Android iba a ser un dolor (ver \cref{subsec:testing}),
+por lo que primero se afrontó una implementación en Linux usando
+\gls{wpa_supplicant} y \gls{D-Bus}.
+
+Se descubrió (lenta y dolorosamente) que el estado de estas tecnologías no era
+tan maduro como se esperaba inicialmente. La implementación de la capa de
+transporte en Linux fue extremadamente lenta comparado con lo que hubiera
+sido de esperar, en parte por todas las complicaciones descritas en el
+\cref{subsec:testing}.
+
+### Cliente básico
+
+Junto con la capa de transporte se creó un cliente básico en `examples/dbus`
+con el propósito de testearla, que eventualmente se convertiría en una pequeña
+interfaz de usuario usando GTK para testear casos más complejos con múltiples
+miembros.
+
+### Creación de abstracciones
+
+A pesar de que el código se había escrito con la intención de ser reutilizable
+en otras plataformas, no se realizó el trabajo de factorizarlo y usar interfaces claras hasta que la capa de transporte funcionaba de manera robusta.
+
+### Capa de transporte y demo en Android
+
+TODO
+
+## Pruebas realizadas
+
 TODO
 
 # Gestión del proyecto

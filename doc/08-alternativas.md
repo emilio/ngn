@@ -20,6 +20,7 @@ sobre la viabilidad del proyecto.
 # Alternativas consideradas
 
 ## Lenguaje de programación
+\label{subsec:lang-alternatives}
 
 La elección de Rust ha sido explicada en el \cref{subsec:lang}.
 
@@ -66,6 +67,7 @@ Se consideraron otras alternativa a estos tres lenguajes también:
    Rust.
 
 ## Capa de transporte
+\label{subsec:transport}
 
 Para la capa de transporte, sólo Bluetooth y WiFi Direct son alternativas
 estándar en hardware de consumo. Bluetooth está disponible también en
@@ -127,8 +129,50 @@ biblioteca criptográfica no es difícil de cambiar, y adaptar MLS u otra
 biblioteca no debería ser un desafío.
 
 No se consideró implementar las primitivas criptográficas por la falta de
-tiempo, y lo [común que es hacerlo
+tiempo y lo [común que es hacerlo
 mal](https://security.stackexchange.com/questions/18197/why-shouldnt-we-roll-our-own).
+
+## Toolkit de interfaz de usuario para Android
+\label{subsec:jetpack-alternatives}
+
+Se usó Jetpack Compose para la interfaz de usuario en Android (ver
+\cref{subsec:jetpack}).
+
+Android soporta varias alternativas para interfaces de usuario, desde los
+[Fragments](https://developer.android.com/guide/fragments) a otros toolkit
+multiplataforma como podrían ser [Flutter](https://flutter.dev/) o [React
+Native](https://reactnative.dev/).
+
+El autor solo estaba familiarizado superficialmente con estos toolkits, y la
+curva de aprendizaje iba a ser significativa en cualquier caso, así que se optó
+por una solución en Kotlin para evitar problemas de integración con otros
+lenguajes (ya que la librería tenía que usar al menos Java para la interacción
+con el sistema).
+
+Entre Fragments y Jetpack Compose, que son las dos alternativas que soportaban
+Kotlin o Java, se eligió el último por ser más moderno y activamente
+recomendado en la documentación oficial:
+
+> Jetpack Compose is Android's recommended modern toolkit for building native UI with less code, powerful tools, and intuitive Kotlin APIs. \cite{android-ui}
+
+## Toolkit de interfaz de usuario para Linux
+\label{subsec:gtk-alternatives}
+
+Se usó GTK para la interfaz de usuario en Linux (ver \cref{subsec:gtk}).
+
+La demo de Linux intencionadamente es extremadamente sencilla, siendo su mayor
+utilidad probar el protocolo sin tener que compilar Android y usar varios
+dispositivos. Por lo tanto cualquier toolkit podría proporcionar la
+funcionalidad necesaria, y se priorizó facilidad y familiaridad del autor sobre
+otros factores como rendimiento y funcionalidad.
+
+En cuestión de toolkits populares que soporten Linux, los más populares son GTK
+y [Qt](https://www.qt.io/platform/desktop-app-development). Sin embargo, la
+comunidad de GNOME proporciona [bindings para
+Rust](https://gtk-rs.org/gtk4-rs/stable/latest/book/introduction.html) listos
+para usar, y el autor es un [contribuidor ocasional a
+GTK](https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/?sort=closed_at_desc&state=all&author_username=emilio),
+lo cual lo hacían una elección mucho más fácil.
 
 ## Control de versiones y alojamiento
 

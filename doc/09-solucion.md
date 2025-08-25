@@ -1,4 +1,5 @@
 \chapter{Descripción de la solución propuesta}
+\label{chap:solution}
 
 <!--
   Se debe describir técnicamente el producto final con funcionalidades,
@@ -154,6 +155,7 @@ pub trait P2PSessionListener<S: P2PSession>: Debug + Send + Sync {
 ```
 
 ## Identificación de dispositivos y grupos
+\label{subsec:handles}
 
 Los identificadores que se usan para el enrutamiento de mensajes (`PeerId` y
 `GroupId`) son independientes de la capa de transporte y plataforma. Son
@@ -244,7 +246,7 @@ de que hubiera un \Gls{MITM} durante el intercambio de claves.
 A pesar de que en el prototipo las claves de identidad son efímeras por
 conveniencia (no se ha implementado persistencia ni una base de datos de
 identidades conocidas), la idea es que estas claves ed25519 pudieran ser
-persistentes.
+persistentes. \label{subsec:ephemeral-identities}
 
 El cifrado (una vez se han acordado las claves correspondientes) y la firma de
 los mensajes son relativamente sencillos, por lo que no se indagará mucho más
@@ -386,11 +388,12 @@ Para interactuar con las APIs del sistema de Android, debemos usar la
 \Gls{JNI}. Esta interfaz permite a programas en C llamar a Java, y vice versa.
 
 Rust, convenientemente, también soporta la [interfaz de llamadas de
-C](TODO:rust-ffi). Se ha usado una librería pre-existente para usar tipos algo
-más convenientes llamada [jni](https://docs.rs/jni).
+C](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html#using-extern-functions-to-call-external-code).
+Se ha usado una librería pre-existente para usar tipos algo más convenientes
+llamada [jni](https://docs.rs/jni).
 
 Un ejemplo sencillo podría ser cómo inicializamos la sesión nativa.
-`ngn_session_init` devuelve un puntero nativo en un `jlong`, y
+`ngn_session_init` devuelve un puntero nativo (en un `jlong`), y
 `ngn_session_drop` lo destruye desde java cuando ya no es necesario:
 
 ```rust
@@ -563,3 +566,67 @@ class Listener(val activity: MainActivity) : NgnListener() {
 
 ![Ejemplo de flujo de control entre Java y Rust](build/images/02-java-rust-flux.pdf)
 
+# Aplicación demostrativa
+
+Se ha escrito un **juego multijugador por turnos** para demostrar la
+funcionalidad de la biblioteca, basado en el popular (si bien sencillo) juego
+2048 \cite{wiki:2048}.
+
+## Tecnología utilizada
+
+El código de la aplicación es relativamente sencillo, y se encuentra en
+`examples/android`. Se ha utilizado Jetpack Compose como el toolkit para la
+interfaz (ver \cref{subsec:jetpack} y \cref{subsec:jetpack-alternatives}), y
+Kotlin como el lenguaje de programación (ver \cref{subsec:kotlin}).
+
+La lógica del juego se encuentra implementada en `GameBoard.kt`, y es una
+conversión casi directa del [código fuente original en
+Javascript](https://github.com/gabrielecirulli/2048), y la interfaz y la
+interacción con la biblioteca se encuentra en `MainActivity.kt`.
+
+## Pantalla inicial
+
+La pantalla inicial sólo contiene una entrada de texto que permite seleccionar
+un nombre de usuario:
+
+![Captura de pantalla inicial de la aplicación](images/app-screenshot-01-landing.jpg)
+
+Una vez el usuario ha seleccionado el nombre de usuario y concede los permisos
+necesarios para el uso de WiFi Direct, se genera una identidad efímera con una
+clave creada aleatoriamente, y se comienza un escaneo de dispositivos
+adyacentes.
+
+Una mejora obvia es persistir esta identidad en el almacenamiento del
+dispositivo (ver \cref{subsec:ephemeral-identities}). Esto no se ha hecho por
+falta de tiempo.
+
+## Lista de dispositivos disponibles
+
+Una vez ha comenzado el escaneo, se muestra la lista de dispositivos
+disponibles (\cref{fig:peer-list}).
+
+![Lista de dispositivos disponibles \label{fig:peer-list}](images/app-screenshot-02-peer-list.jpg)
+
+Al hacer click en alguno de ellos, se envía una solicitud de conexión, que el
+otro dispositivo necesita aprobar (\cref{fig:conn-request}).
+
+![Solicitud de conexión \label{fig:conn-request}](images/app-screenshot-03-connection-request.jpg)
+
+La lista de dispositivos se actualiza con el nombre de usuario de los
+dispositivos conectados (\cref{fig:peer-list-connected}).
+
+![Lista de dispositivos con un dispositivo conectado \label{fig:peer-list-connected}](images/app-screenshot-04-peer-list-connected.jpg)
+
+Nótese que los detalles de esta pantalla están marcados por las limitaciones
+descritas en el \cref{sec:restrictions}. En particular, idealmente
+se intentaría conectar directamente con los dispositivos cercanos, para así
+poder mostrar su identidad *lógica* (y no solo los datos del dispositivo), pero
+la limitación de Android de un grupo físico hace esto imposible.
+
+## Pantalla de juego
+
+El juego comienza al hacer click otra vez en la fila de conexión. La pantalla
+de juego muestra la puntuación total, y el turno actual
+(\cref{fig:game-screen}). El usuario sólo puede mover en su turno.
+
+![Pantalla de juego \label{fig:game-screen}](images/app-screenshot-05-game.jpg)

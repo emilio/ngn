@@ -1,7 +1,5 @@
 \chapter{Análisis de Riesgos}
 
-TODO
-
 <!--
   En el caso de desarrollos orientados al usuario, debería analizarse el riesgo
   de aceptación y el nivel de satisfacción que podremos medir tras la
@@ -46,7 +44,7 @@ correctivas o de mitigación propuestas.
 **Descripción**    No se obtiene la adopción esperada de esta biblioteca.
 **Probabilidad**   Alta
 **Prioridad**      Alta
-**Mitigaciones**   Implementación en otras plataforms y de otras capas de
+**Mitigaciones**   Implementación en otras plataformas y de otras capas de
                    transporte.
 
 : R2: Falta de adopción
@@ -62,3 +60,15 @@ correctivas o de mitigación propuestas.
 
 : R3: Dificultad de mantenimiento
 
+**R4**             **Problemas de integración**
+-----------------  --------------------------------------------------------
+**Descripción**    Las plataformas imponen restricciones varias, causando
+                   problemas severos de usabilidad.
+**Probabilidad**   Alta
+**Prioridad**      Media
+**Mitigaciones**   En plataformas abiertas o semi-abiertas como Linux y Android
+                   respectivamente, trabajar con *upstream* para mejorar la
+                   situación en cuanto a permisos, y tal vez permitir múltiples
+                   grupos físicos, o descubrimiento pasivo.
+
+: R4: Problemas de integración

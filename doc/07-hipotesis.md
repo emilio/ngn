@@ -27,6 +27,7 @@ utilizar, que abstraiga los detalles profundos del direccionamiento, podría
 aumentar la adopción de estas tecnologías.
 
 # Restricciones
+\label{sec:restrictions}
 
 En esta sección se detallan las limitaciones que han motivado las decisiones
 tomadas durante el desarrollo del proyecto. Se han elaborado a partir de los
@@ -121,6 +122,7 @@ alternativas serían usar un `dbus-daemon` diferente, como se ha hecho para
 testear localmente con múltiples instancias.
 
 ## Restricciones técnicas: DHCP 
+\label{subsec:dhcp}
 
 Con la intención de simplificar la capa de transporte, inicialmente se intentó
 usar direcciones de link local de IPv6 \cite{rfc4862} (sección 5.3).
@@ -156,6 +158,7 @@ información que la biblioteca puede exponer inicialmente sobre el dispositivo e
 mucho más limitada.
 
 ## Restricciones de usabilidad: Interacción entre `wpa_supplicant` y `NetworkManager`
+\label{subsec:wpa-nm-interaction}
 
 Actualmente, usar la biblioteca via `wpa_supplicant` requiere desactivar
 [`NetworkManager`](https://networkmanager.dev). Esto es porque `NetworkManager`

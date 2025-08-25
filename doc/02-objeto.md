@@ -12,6 +12,7 @@
 -->
 
 # Objetivos del Sistema
+\label{chap:system-objectives}
 
 El objetivo principal del trabajo es desarrollar una biblioteca que facilite la
 comunicación peer-to-peer entre dispositivos, y además proporcione varias

@@ -115,6 +115,7 @@ ecosistema de Rust como [cargo](https://doc.rust-lang.org/cargo/)
 para la gestión de dependencias.
 
 ### Lenguaje de programación: Kotlin
+\label{subsec:kotlin}
 
 Se ha elegido [Kotlin](https://kotlinlang.org/) como lenguaje para desarrollar
 la demo en Android. Kotlin es un lenguaje moderno y estáticamente tipado basado
@@ -137,6 +138,7 @@ interoperan de forma casi transparente, lo cual lo hizo una decisión más
 conveniente a la hora de exponer la biblioteca a Android.
 
 ### Lenguaje de programación: C
+\label{subsec:lang-c}
 
 Durante el desarrollo, se han tenido que investigar múltiples problemas y
 situaciones inesperadas relacionadas con \gls{wpa_supplicant}, y se han
@@ -156,9 +158,24 @@ enviado y aceptado varias mejoras a este software escrito en C:
  Expone la dirección del *Group Owner* de WiFi Direct, para poder realizar el
  intercambio de claves en menos pasos.
 
+### Toolkit de interfaz de usuario: Jetpack Compose
+\label{subsec:jetpack}
+
+Se ha usado [Jetpack Compose](https://developer.android.com/compose) para la
+interfaz de usuario en la demo de Android. Es el toolkit recomendado por Google
+para el desarrollo de aplicaciones Android.
+
+### Toolkit de interfaz de usuario: GTK
+\label{subsec:gtk}
+
+Se ha usado [GTK](https://www.gtk.org/) junto con
+[libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/) para la interfaz
+de usuario en la demo de Linux.
+
 ## Herramientas metodológicas
 
 ### Depurador: rr
+\label{subsec:rr}
 
 [rr](https://rr-project.org/) es un depurador para Linux que permite grabar la
 ejecución de un proceso (y todos sus sub-procesos) y luego reproducirla de
@@ -201,7 +218,7 @@ documento final.
 
 [Mermaid](https://mermaid.js.org/) es una herramienta de software libre para
 generar diagramas a partir de texto plano. Se ha utilizado para generar los
-varios diagramas incluidos en esta memoria.
+varios diagramas incluidos en esta memoria y los adjuntos.
 
 ### Documentación: rustdoc
 
