@@ -67,15 +67,41 @@ miembros.
 ### Creación de abstracciones
 
 A pesar de que el código se había escrito con la intención de ser reutilizable
-en otras plataformas, no se realizó el trabajo de factorizarlo y usar interfaces claras hasta que la capa de transporte funcionaba de manera robusta.
+en otras plataformas, no se realizó el trabajo de factorizarlo y usar
+interfaces claras hasta que la capa de transporte funcionaba de manera robusta,
+ya que las restricciones la capa de transporte afectaban a la interfaz que se
+podía exponer.
 
 ### Capa de transporte y demo en Android
 
-TODO
+Una vez se abstrajo la capa de transporte detrás de una interfaz reutilizable,
+se comenzó la implementación del soporte para Android, junto con la demo.
+
+Ambas se desarrollaron en paralelo, y el desarrollo de la capa de transporte en
+sí fue bastante rápido (sólo necesitó adaptaciones menores para las
+restricciones de Android).
+
+### Implementación de cifrado punto a punto
+
+En paralelo al desarrollo de la capa de transporte se desarrolló el sistema de
+identidad basada en clave pública y la firma de mensajes, pero aún quedaba
+afrontar la implementación del cifrado punto a punto.
+
+Hubo complicaciones menores, ya que no había manera de conseguir el estado
+efímero del GO sin su identidad en Linux, pero se solucionaron y enviaron los
+cambios upstream.
 
 ## Pruebas realizadas
 
-TODO
+La mayoría de pruebas realizadas han sido manuales (tristemente, ver
+\cref{subsec:testing}).
+
+Se ha creado una pequeña interfaz en Linux para testear configuraciones de
+grupos arbitrarias (`test/setup.sh` admite configurar interfaces arbitrarias).
+
+El código de Android ha sido testeado en los dispositivos disponibles (OnePlus
+11/12 y Xiaomi Redmi). Por la naturaleza de la aplicación no puede ser testeada
+en un emulador.
 
 # Gestión del proyecto
 

@@ -14,6 +14,17 @@
 \usepackage{listings}
 \usepackage{minted}
 \usepackage{amsmath}
+
+\usepackage[toc,titletoc,page]{appendix}
+\addto\extrasspanish{
+  \def\appendixautorefname{Anexo}
+  \def\appendixname{Anexo}
+  \def\appendixtocname{Anexos}
+  \def\appendixpagename{Anexos}
+  \crefname{appendix}{anexo}{anexos}
+  \Crefname{appendix}{Anexo}{Anexos}
+}
+
 % Needed to be able to display `tree`s output, see https://tex.stackexchange.com/questions/720134/unicode-character-u2514-not-set-up-with-latex-when-using-pandoc-with-mark
 \usepackage{pmboxdraw}
 \usepackage[spanish,nameinlink,noabbrev]{cleveref}
@@ -164,5 +175,16 @@
 
 \bibliographystyle{plain}
 \bibliography{bibliography}
+
+\begin{appendices}
+\renewcommand*{\thechapter}{\arabic{chapter}}
+\crefalias{chapter}{appendix}
+
+\input{build/a1-specs.tex}
+\input{build/a2-design.tex}
+\input{build/a3-effort.tex}
+\input{build/a4-security.tex}
+
+\end{appendices}
 
 \end{document}

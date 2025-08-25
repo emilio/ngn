@@ -32,7 +32,7 @@ aumentar la adopción de estas tecnologías.
 En esta sección se detallan las limitaciones que han motivado las decisiones
 tomadas durante el desarrollo del proyecto. Se han elaborado a partir de los
 requisitos no funcionales, especificados en el \cref{sec:nfr}, y más en detalle
-en el *Anexo I. Especificaciones del sistema*.
+en el \cref{annex:specs}.
 
 ## Restricciones técnicas: entorno de explotación
 

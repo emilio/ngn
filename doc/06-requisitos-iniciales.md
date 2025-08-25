@@ -10,12 +10,10 @@ En este capítulo se recogen, de manera resumida, los requisitos del sistema,
 especificados siguiendo la Metodología para la Elicitación de Requisitos de
 Sistemas Software de Durán Toro y Bernárdez Jiménez \cite{req-duran-bernardez}.
 
-En el *Anexo I. Especificaciones del sistema* se especifican estos requisitos
-de manera más detallada, siguiendo, en la medida de lo posible, la estructura y
-plantillas especificada por Durán y Bernárdez \cite{req-duran-bernardez}.
-
 Este capítulo constituye un resumen de las partes más relevantes de dicho
 anexo.
+
+<!--
 
 # Requisitos de información
 
@@ -24,14 +22,24 @@ Según la norma IEEE 29148-2018 sobre ingeniería de requisitos
 requisitos para la gestión por parte del sistema de la información que recibe,
 genera o exporta} (p. 66).
 
-TODO
+TODO?
+
+-->
 
 # Requisitos funcionales
 
 Los requisitos funcionales definen \enquote{qué debe hacer el sistema con la información
 almacenada para alcanzar los objetivos de su negocio}.
 
-TODO
+Se han definido los siguientes requisitos funcionales para el sistema:
+
+ * El sistema deberá permitir a varios dispositivos enviar mensajes entre ellos
+   sin necesidad de conexión a internet.
+
+ * El sistema deberá abstraer la tecnología física de comunicación.
+
+ * El sistema deberá permitir la identificación via un sistema de clave pública
+   / privada independiente de la capa física.
 
 # Requisitos no funcionales
 \label{sec:nfr}

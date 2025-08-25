@@ -185,7 +185,7 @@ con que sin una capa de transporte funcional, todo el proyecto sería
 Por una parte, ignorarla en su momento hubiera ahorrado una gran cantidad de
 tiempo y esfuerzo que se hizo por adelantado.
 
-![Fixing Problems (XKCD 1739)](images/fixing-problems.png)
+![Problemas autoinfligidos (Fixing Problems --- XKCD 1739)](images/fixing-problems.png)
 
 Por otra parte, muchas de las complicaciones que se encontraron y de la
 investigación necesaria para solucionarlas, fueron las que hicieron posible que
