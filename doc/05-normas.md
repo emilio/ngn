@@ -44,9 +44,13 @@ Al final de cada *sprint* se realizan dos eventos. Primero, se lleva a cabo una
 reunión de revisión para demostrar el trabajo completado y recibir
 retroalimentación.
 
+Después de la revisión, se realiza una reunión de retrospectiva donde el equipo
+reflexiona sobre el sprint y discute qué funcionó y qué no, con el fin de
+mejorar continuamente el proceso.
+
 ### Aplicación de Scrum al TFG
 
-En el caso de este TFG, el *Product Owner* es el tutor del TFG, Guillermo
+En el caso de este TFG, el *Product Owner* es el co-tutor del TFG, Guillermo
 González Talaván, mientras que el autor del TFG asume los roles de *Scrum
 Master* y equipo de desarrollo.
 
