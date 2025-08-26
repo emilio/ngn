@@ -202,12 +202,168 @@ Comentarios  ninguno
 
 # Catálogo de requisitos del sistema
 
-TODO
-
-## Requisitos de la información
-
 ## Requisitos funcionales
+
+Los requisitos funcionales definen \enquote{qué debe hacer el sistema con la
+información almacenada para alcanzar los objetivos de su negocio}.
+
+La elicitación de requisitos basada en casos de usos no es particularmente
+aplicable a una biblioteca de software, por lo que se ha simplificado sustancialmente las plantillas de Durán y Bernárdez.
+
+RF-1         Comunicación directa entre dispositivos
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe permitir a los dispositivos intercambiar mensajes
+             sin requerir conexión a internet.
+Relaciones   OBJ-1, OBJ-5
+
+: RF-1: Comunicación directa entre dispositivos
+
+RF-2         Abstracción de la capa física
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe ofrecer una API unificada para enviar y recibir
+             mensajes, independientemente de la tecnología utilizada
+             (Bluetooth, WiFi-Direct, etc.).
+Relaciones   OBJ-1
+
+: RF-2: Abstracción de la capa física
+
+RF-3         Interoperabilidad multiplataforma
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe opcionalmente proveer implementaciones para
+             distintas plataformas.
+Relaciones   OBJ-2
+
+: RF-3: Interoperabilidad multiplataforma
+
+RF-4         Gestión de grupos lógicos
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe permitir la creación, unión y salida de grupos
+             lógicos dentro de un grupo físico.
+Relaciones   OBJ-3
+
+: RF-4: Gestión de grupos lógicos
+
+RF-5         Interconexión de grupos
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  Opcionalmente, la biblioteca debe permitir la interconexión de
+             múltiples grupos físicos en un solo grupo lógico.
+Relaciones   OBJ-3
+
+: RF-5: Interconexión de grupos
+
+RF-6         Identificación segura de nodos
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe implementar un sistema de identificación único
+             para cada dispositivo, basado en criptografía de clave
+             pública/privada.
+Relaciones   OBJ-4
+
+: RF-6: Identificación segura de nodos
+
+RF-7         Privacidad y autenticación de mensajes
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  El sistema debe garantizar que los mensajes puedan ser
+             autenticados y, opcionalmente, cifrados de extremo a extremo.
+Relaciones   OBJ-4
+
+: RF-7: Privacidad y autenticación de mensajes
+
+RF-8         Aplicación de prueba de concepto
+----         ----------------
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  Debe desarrollarse una aplicación que use la biblioteca y valide
+             sus capacidades.
+Relaciones   OBJ-5
+
+: RF-8: Aplicación de prueba de concepto.
 
 ## Requisitos no funcionales
 
+Los requisitos no funcionales son aquellos que definen cualidades sobre el
+sistema que no están directamente relacionadas con la funcionalidad del mismo,
+sino con aspectos como el rendimiento, la usabilidad, la seguridad, etc
+\cite{penalvo-requirements}.
+
+RNF-1        Portabilidad
+-----        -----
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  Accesibilidad desde diferentes plataformas y sistemas operativos.
+Relaciones   OBJ-2
+
+: RNF-1: Portabilidad
+
+RNF-2        Extensibilidad
+-----        -----
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  Facilidad para añadir nuevas plataformas y transportes físicos.
+Relaciones   OBJ-2
+
+: RNF-2: Extensibilidad
+
+RNF-3        Seguridad
+-----        -----
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  Identificación y cifrado de mensajes independiente de la capa
+             física.
+Relaciones   OBJ-4
+
+: RNF-3: Seguridad
+
+RNF-4        Accesibilidad
+-----        -----
+Versión      1.0 (20/10/2024)
+Autores      Emilio Cobos Álvarez
+Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción  La biblioteca deberá funcionar con dispositivos
+             accesibles / no requerir hardware especial.
+Relaciones   OBJ-1, OBJ-5
+
+: RNF-4: Accesibilidad
+
 # Matriz de rastreabilidad objetivo/requisitos
+
+Requisito   OBJ-1   OBJ-2   OBJ-3   OBJ-4   OBJ-5
+---------- ------- ------- ------- ------- ------
+RF-1          X                               X
+RF-2          X
+RF-3                  X
+RF-4                          X
+RF-5                          X
+RF-6                                  X
+RF-7                                  X
+RF-8                                          X
+RNF-1                 X
+RNF-2                 X
+RNF-3                                 X
+RNF-4         X                               X
+
+: Matriz de rastreabilidad objetivo/requisitos

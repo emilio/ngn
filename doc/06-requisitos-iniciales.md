@@ -38,8 +38,23 @@ Se han definido los siguientes requisitos funcionales para el sistema:
 
  * El sistema deberá abstraer la tecnología física de comunicación.
 
+ * El sistema deberá opcionalmente proveer implementaciones para distintas
+   plataformas.
+
+ * El sistema debe permitir la creación, unión y salida de grupos lógicos
+   dentro de un grupo físico.
+
  * El sistema deberá permitir la identificación via un sistema de clave pública
    / privada independiente de la capa física.
+
+ * Opcionalmente, el sistema debe permitir la interconexión de múltiples grupos
+   físicos en un solo grupo lógico.
+
+ * El sistema debe garantizar que los mensajes puedan ser autenticados y,
+   opcionalmente, cifrados de extremo a extremo.
+
+ * Debe desarrollarse una aplicación que use la biblioteca y valide sus
+   capacidades.
 
 # Requisitos no funcionales
 \label{sec:nfr}
