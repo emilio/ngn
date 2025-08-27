@@ -1,0 +1,99 @@
+%% Co-authored-by: Claude
+graph TB
+    %% Application Layer
+    subgraph "Aplicación"
+        App[Código de la aplicación]
+    end
+
+    %% Core Library Interface
+    subgraph "Interfaz principal (lib.rs)"
+        P2PSession[Trait P2PSession]
+        P2PListener[Trait P2PSessionListener]
+        PeerHandle[PeerId]
+        GroupHandle[GroupId]
+    end
+
+    %% Protocol Layer
+    subgraph "Capa de protocolo (protocol/)"
+        subgraph "Protocolo de mensajes"
+            ControlMsg[Mensajes de control]
+            BinaryProto[Formato binario]
+            PeerIdent[Manejo de identidades]
+        end
+
+        subgraph "Seguridad"
+            Identity[Gestión de identidades<br/>Ed25519]
+            Signing[Firma de mensajes<br/>Ed25519]
+            Encryption[Cifrado de mensajes<br/>AES-256-GCM]
+            KeyExchange[Intercambio de claves<br/>ECDH X25519]
+        end
+    end
+
+    %% Platform Layer
+    subgraph "Capa de plataforma (platform/)"
+        subgraph "Backend D-Bus"
+            DBusImpl[D-Bus]
+            WpaSupplicant[Interfaz con WPA Supplicant]
+            DBusEvents[Gestión de eventos de D-Bus]
+        end
+
+        subgraph "Backend Android"
+            AndroidImpl[Implementacióon de Android]
+            JNIInterface[Interfaz con JNI]
+            WifiP2pManager[WifiP2pManager]
+        end
+    end
+
+    %% Utilities
+    subgraph "Utilidades (utils.rs)"
+        MacUtils[Utilidades de dirección MAC]
+        IPv6Utils[IPv6 Link-Local]
+        RetryUtils[Mecanismos de reintento]
+        ErrorUtils[Gestión de errores]
+    end
+
+    %% Connections
+    App --> P2PSession
+    App --> P2PListener
+
+    P2PSession --> DBusImpl
+    P2PSession --> AndroidImpl
+
+    P2PListener --> PeerHandle
+    P2PListener --> GroupHandle
+
+    DBusImpl --> ControlMsg
+    AndroidImpl --> ControlMsg
+
+    ControlMsg --> Identity
+    ControlMsg --> KeyExchange
+
+    BinaryProto --> Signing
+    BinaryProto --> Encryption
+
+    KeyExchange --> Encryption
+    Identity --> Signing
+
+    DBusImpl --> WpaSupplicant
+    DBusImpl --> DBusEvents
+
+    AndroidImpl --> JNIInterface
+    JNIInterface --> WifiP2pManager
+
+    DBusImpl --> MacUtils
+    AndroidImpl --> IPv6Utils
+    DBusImpl --> RetryUtils
+    AndroidImpl --> ErrorUtils
+
+    %% Styling
+    classDef appLayer fill:#e1f5fe
+    classDef coreLayer fill:#f3e5f5
+    classDef protocolLayer fill:#e8f5e8
+    classDef platformLayer fill:#fff3e0
+    classDef utilsLayer fill:#fafafa
+
+    class App appLayer
+    class P2PSession,P2PListener,PeerHandle,GroupHandle coreLayer
+    class ControlMsg,BinaryProto,PeerIdent,Identity,Signing,Encryption,KeyExchange protocolLayer
+    class DBusImpl,WpaSupplicant,DBusEvents,AndroidImpl,JNIInterface,WifiP2pManager platformLayer
+    class MacUtils,IPv6Utils,RetryUtils,ErrorUtils utilsLayer

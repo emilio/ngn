@@ -1,0 +1,31 @@
+%% Connection Establishment Sequence
+%% Co-authored-by: claude
+sequenceDiagram
+    participant App as Aplicación
+    participant Session as P2PSession
+    participant Platform as Capa plataforma
+    participant PeerA as Nodo A
+    participant PeerB as Nodo B
+    participant Listener as P2PSessionListener
+
+    App->>Session: connect_to_peer(peer_id)
+    Session->>Platform: iniciar conexión P2P
+    Platform->>Platform: negociación WiFi P2P
+    Platform->>Session: group_started
+    Session->>Session: crea GroupId
+    Session->>Listener: joined_group(session, group_id, is_go)
+
+    alt Si es Group Owner
+        PeerB->>PeerA: Conexión TCP a canal de control
+        PeerB->>PeerA: Associate
+        PeerA->>PeerA: Validar y finalizar intercambio de claves
+        PeerA->>PeerB: Associate
+        PeerA->>Listener: peer_joined_group(session, group_id, peer_id)
+    else Si es Cliente
+        PeerA->>PeerB: Conexión TCP a canal de control
+        PeerA->>PeerB: Associate
+        PeerB->>PeerB: Validar y finalizar intercambio de claves
+        PeerB->>PeerA: Associate
+        PeerB->>Listener: peer_joined_group(session, group_id, peer_id)
+    end
+

@@ -166,14 +166,14 @@ Comentarios  ninguno
 
 : OBJ-3: Gestión de grupos lógicos
 
-OBJ-4        Identificación y seguridad
------        --------------
-Versión      1.0 (20/10/2024)
-Autores      Emilio Cobos Álvarez
-Fuentes      Guillermo González Talaván, Pedro Martín Vallejo Llamas
-Descripción  Incorporar un sistema de identificación basado en criptografía de
-             clave pública/privada, garantizando autenticidad y privacidad de
-             mensajes, independiente de la tecnología física de comunicación.
+OBJ-4\label{obj-4}        Identificación y seguridad
+-----                     --------------
+Versión                   1.0 (20/10/2024)
+Autores                   Emilio Cobos Álvarez
+Fuentes                   Guillermo González Talaván, Pedro Martín Vallejo Llamas
+Descripción               Incorporar un sistema de identificación basado en criptografía de
+                          clave pública/privada, garantizando autenticidad y privacidad de
+                          mensajes, independiente de la tecnología física de comunicación.
 Subobjetivos ---
 Importancia  vital
 Urgencia     hay presión

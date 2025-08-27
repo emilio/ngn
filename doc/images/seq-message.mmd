@@ -1,0 +1,16 @@
+%% Secure Messaging Sequence
+%% Co-authored-by: claude
+sequenceDiagram
+    participant App as Aplicación
+    participant SessionA as Sesión A
+    participant SessionB as Sesión B
+    participant ListenerB as Listener B
+
+    App->>SessionA: message_peer(peer_id, data)
+    SessionA->>SessionA: cifrar con AES-256-GCM
+    SessionA->>SessionA: firmar con Ed25519
+    SessionA->>SessionA: añadir cabecera de protocolo binario
+    SessionA->>SessionB: Conexión TCP + mensaje cifrado
+    SessionB->>SessionB: Verificar firma Ed25519
+    SessionB->>SessionB: descifrar con AES-256-GCM
+    SessionB->>ListenerB: peer_messaged(session, peer_id, group_id, data)

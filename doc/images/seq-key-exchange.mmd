@@ -1,0 +1,22 @@
+%% Key Exchange Sequence
+%% Co-authored-by: claude
+sequenceDiagram
+    participant PeerA as Nodo A
+    participant PeerB as Nodo B
+
+    Note over PeerA, PeerB: Intercambio de claves ECDH
+    PeerA->>PeerA: generar clave privada X25519
+    PeerA->>PeerA: derivar clave pública X25519
+    PeerB->>PeerB: generar clave privada X25519
+    PeerB->>PeerB: derivar clave pública X25519
+
+    PeerA->>PeerB: Associate + clave pública + identidad Ed25519
+    PeerB->>PeerB: validar identidad Ed25519
+    PeerB->>PeerB: ECDH: calcular secreto compartido
+    PeerB->>PeerB: Derivar clave AES-256-GCM a partir del secreto compartido
+    PeerB->>PeerA: Associate + clave pública + identidad Ed25519
+    PeerA->>PeerA: validar identidad Ed25519
+    PeerA->>PeerA: ECDH: calcular secreto compartido
+    PeerA->>PeerA: Derivar clave AES-256-GCM a partir del secreto compartido
+
+    Note over PeerA, PeerB: Canal seguro establecido

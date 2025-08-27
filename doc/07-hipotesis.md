@@ -83,6 +83,7 @@ inicialmente (aunque eso por supuesto tiene más posibilidades de colisiones).
 \clearpage
 
 ## Restricciones técnicas: Permisos en Linux
+\label{subsec:linux-permissions}
 
 El ecosistema de Linux es muy variado, y no se ha hecho un estudio exhaustivo
 sobre qué distribuciones limitan el acceso por \Gls{D-Bus} a `wpa_supplicant`,

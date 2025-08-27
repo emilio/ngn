@@ -222,7 +222,20 @@ documento final.
 
 [Mermaid](https://mermaid.js.org/) es una herramienta de software libre para
 generar diagramas a partir de texto plano. Se ha utilizado para generar los
-varios diagramas incluidos en esta memoria y los adjuntos.
+varios diagramas incluidos en esta memoria y los anexos.
+
+### Documentación: Claude
+
+[Claude](https://claude.ai/) es un modelo de inteligencia artificial de
+Anthropic. Se ha utilizado para generar versiones iniciales de algunos de los
+diagramas en los anexos, ya que escribir mermaid a mano es propenso a errores,
+y el autor no estaba demasiado familiarizado con Mermaid previa a la
+elaboración de esta memoria.
+
+Como persona escéptica de estos modelos en general he de decir que, a pesar de
+cometer una gran cantidad de errores (muchos de los diagramas generados no
+compilaban) generó diagramas correctos a grandes rangos, lo que fue útil como
+punto de partida.
 
 ### Documentación: rustdoc
 

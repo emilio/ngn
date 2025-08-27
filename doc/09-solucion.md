@@ -229,6 +229,7 @@ El resto de puertos son dinámicos.
 ![Flujo de control al conectarse a un nuevo grupo](build/images/01-flux.pdf)
 
 # Criptografía
+\label{sec:crypto}
 
 La solución propuesta implementa cifrado punto a punto usando el cifrado
 simétrico \Gls{AES}-256-\Gls{GCM}, con un intercambio de claves usando
