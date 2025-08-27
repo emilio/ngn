@@ -41,10 +41,10 @@ rápidamente si esa avenida era imposible.
 ### Capa de transporte en Linux
 \label{subsec:transport-impl}
 
-Durante las primeras reuniones con el tutor, se debatió por donde afrontar la
-implementación. En contra de la recomendación de Guillermo, y con la intención
-de obtener algo funcional desde el principio, se decidió trabajar en la capa de
-transporte.
+Durante las primeras reuniones con los tutores, se debatió por donde afrontar
+la implementación. En contra de la recomendación de Guillermo, y con la
+intención de obtener algo funcional desde el principio, se decidió trabajar en
+la capa de transporte.
 
 Fue bastante obvio durante el comienzo del desarrollo que trabajar directamente
 en la funcionalidad de Android iba a ser un dolor (ver \cref{subsec:testing}),
@@ -134,15 +134,17 @@ Como editores de código se han utilizado [Neovim](https://neovim.io/) y
 [Android Studio](https://developer.android.com/studio).
 
 Los recursos personales utilizados, por su parte, han sido el autor del
-proyecto, Emilio Cobos Álvarez, y su tutor, Guillermo González Talaván.
+proyecto, Emilio Cobos Álvarez, y sus tutores, Guillermo González Talaván y
+Pedro Martín Vallejo Llamas.
 
 Las responsabilidades del autor han abarcado el ciclo de vida completo del
 proyecto, siendo el encargado de la planificación, diseño, desarrollo,
 implementación, pruebas y documentación del mismo.
 
-El tutor del proyecto ha sido el encargado de guiar al autor durante el proceso
-de desarrollo, ayudando a definir los objetivos del proyecto, y revisando el
-progreso del proyecto en las reuniones semanales de seguimiento.
+Los tutores del proyecto han sido los encargado de guiar al autor durante el
+proceso de desarrollo, ayudando a definir los objetivos del proyecto, y
+revisando el progreso del proyecto en las reuniones semanales y correos de
+seguimiento.
 
 ## Planificación temporal
 

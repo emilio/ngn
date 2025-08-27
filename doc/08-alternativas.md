@@ -180,7 +180,7 @@ Para el control de versiones del proyecto se ha utilizado Git (ver
 \cref{subsec:vcs}) y para el alojamiento del código GitHub (ver
 \cref{subsec:hosting}) y un
 [mirror](https://crisal.io/git/?p=ngn.git;a=summary) propio para compartir
-progreso con el tutor (ya que el repositorio era inicialmente privado).
+progreso con los tutores (ya que el repositorio era inicialmente privado).
 
 El autor conoce también [Mercurial](https://www.mercurial-scm.org/), y de hecho
 considera a Mercurial superior en muchos aspectos a Git. Sin embargo, Git es

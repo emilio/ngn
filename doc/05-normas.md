@@ -55,8 +55,8 @@ González Talaván, mientras que el autor del TFG asume los roles de *Scrum
 Master* y equipo de desarrollo.
 
 Los sprints han tenido una duración de una semana, al final de los cuales tenía
-lugar una reunión de revisión de sprint con el tutor en la que se revisaban las
-tareas completadas, se recibía retroalimentación y se actualizaban los
+lugar una reunión de revisión de sprint con el co-tutor en la que se revisaban
+las tareas completadas, se recibía retroalimentación y se actualizaban los
 objetivos del proyecto.
 
 No se han llevado a cabo reuniones diarias de seguimiento, ya que el
