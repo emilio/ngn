@@ -7,10 +7,10 @@ sequenceDiagram
     participant Listener as P2PSessionListener
 
     App->>Session: discover_peers()
-    Session->>Platform: initiate WiFi P2P scan
-    Platform-->>Platform: scan for peers
-    Platform->>Session: peer found event
-    Session->>Session: create PeerIdentity
-    Session->>Session: assign PeerId handle
+    Session->>Platform: iniciar escaneo WiFi P2P
+    Platform-->>Platform: escanear peers
+    Platform->>Session: peer found
+    Session->>Session: crear PeerIdentity
+    Session->>Session: asignar PeerId handle
     Session->>Listener: peer_discovered(session, peer_id)
     Listener-->>App: notificación de peer descubierto
