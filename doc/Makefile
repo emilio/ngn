@@ -16,7 +16,7 @@ cleanbuild: clean build
 # We assume all resources are used
 build/main.pdf: $(TEX_TARGETS) $(PDF_TARGETS) build/pandoc-macros.tex $(wildcard res/*) bibliography.bib
 	@mkdir -p $(@D)
-	latexmk -bibtex -pdf -jobname=build/main main
+	latexmk -shell-escape -bibtex -pdf -jobname=build/main main
 
 # This is a bit hacky. Pandoc generates latex output but relies on a set of
 # macros to be present on the document via $highlighting-macros$.
