@@ -215,7 +215,13 @@ incrementos del producto.
 ### Aplicación al Trabajo de Fin de Grado
 
 Los artefactos Scrum se han mantenido intactos al aplicar el marco teórico al
-TFG.
+TFG, aunque no se ha mantenido un backlog continuamente durante la duración del
+proyecto, ya que sólo hay un desarrollador y generalmente se han planeado los
+sprints continuamente en base a la anterior.
+
+Una planificación y estimación más detallada por adelantado hubiera sido tal
+vez beneficiosa pero, dada la naturaleza de investigación especialmente durante
+los primeros meses del proyecto, hubiera sido de utilidad limitada.
 
 ## Estimaciones de tiempo
 
@@ -260,9 +266,9 @@ fin.
 
 ### Aplicación al Trabajo de Fin de Grado
 
-Para el Trabajo de Fin de Grado, se han utilizado puntos de historia como
-medida de estimación de esfuerzo, y no se ha realizado una contabilización
-exhaustiva del tiempo empleado en cada tarea.
+Para el Trabajo de Fin de Grado, se han utilizado *t-shirt sizes* como medida
+de estimación de esfuerzo, y no se ha realizado una contabilización exhaustiva
+del tiempo empleado en cada tarea.
 
 Esto se debe a que se considera que lo importante es el esfuerzo necesario para
 completar una tarea, y no el tiempo que se tarda en completarla, siendo el
@@ -272,4 +278,251 @@ el tiempo disponible para trabajar en la tarea.
 
 # Planificación temporal
 
-TODO
+En el presente capítulo se detallará la planificación temporal del proyecto,
+así como las métricas que se han utilizado para su elaboración.
+
+Dadas las restricciones temporales, la planificación temporal ha sido bastante
+dinámica. Las reuniones de *Sprint Planning* se utilizaron para decidir las
+tareas a completar durante el sprint, y estimar su esfuerzo, generalmente
+tratando de dividir las tareas de tal manera que pudieran ser ejecutadas
+durante el *sprint* en la medida de lo posible.
+
+A continuación se presenta un resumen de alto nivel de las fases del
+proyecto, seguido de un resumen sprint a sprint.
+
+## Resumen general
+
+El proyecto se ha desarrollado de manera relativamente consistente desde
+Octubre de 2024 a Agosto de 2025, con algunos parones intermitentes
+(generalmente por la amplia carga de trabajo del autor), especialmente en
+Abril de 2025.
+
+### Exploración inicial (Octubre de 2024)
+
+Se realizó una exploración inicial de las capacidades de comunicación
+peer-to-peer de Android y Linux.
+
+Se eligió tentativamente WiFi Direct como capa de transporte inicial, y se
+desarrolló un [prototipo](https://github.com/emilio/android-wifip2p-test) de
+aplicación para Android, tras una primera familiarización con Android Studio.
+
+Se determinó que para el primer prototipo se usaría Linux como plataforma
+soportada (ver \cref{subsec:testing} y \cref{subsec:transport-impl}).
+
+### Desarrollo inicial en Linux (Diciembre de 2024 a Enero de 2025)
+
+Se realizaron los bloques iniciales usando D-Bus para comunicarse con
+wpa_supplicant. Una buena parte de esta fase fue diagnosticar problemas con los
+que no se contaron inicialmente (ver \cref{subsec:transport-impl} y
+\cref{sec:restrictions}).
+
+### Desarrollo del protocolo principal (Febrero a Mayo de 2025)
+
+Se consiguió un entorno de pruebas estable, se desarrolló todo el protocolo
+binario y un intercambio de mensajes básico usando TCP.
+
+Se desarrolló también la implementación inicial de una interfaz de usuario para
+pruebas usando GTK.
+
+Se determinaron las abstracciones principales, y se refactorizó la
+implementación de Linux con el objetivo de introducir soporte para Android a
+continuación.
+
+### Integración con Android (Junio a Julio de 2025)
+
+Se desarrolló una aplicación de pruebas básica para Android, junto a toda
+la implementación de la librería y la integración con Java usando la \gls{JNI}.
+
+También se hicieron ajustes al protocolo para acomodar las limitaciones /
+restricciones en Android.
+
+Finalmente, se ajustó la aplicación de pruebas para convertirla en la
+aplicación de demostración (el juego de 2048).
+
+### Criptografía y seguridad (Julio a Agosto de 2025)
+
+Se implementó la identificación de clave pública y firma de mensajes
+inicialmente, y posteriormente se realizaron los ajustes necesarios al
+protocolo para realizar el intercambio de claves y el paso de mensajes cifrado.
+
+### Finalización de la documentación (Agosto de 2025)
+
+Se habían hecho varias partes de la documentación como tareas auxiliares en
+otros sprints, y se habían documentado las cosas importantes de manera no
+estructurada en un fichero de texto en el repositorio, pero fue en Agosto
+cuando se formalizó toda la documentación.
+
+## Desglose detallado
+
+A continuación se detallan los sprints donde hubo actividad. Generalmente la
+actividad puede ser comprobada via el log del sistema de control de versiones.
+
+### Sprint 1: Del 1 al 6 de Octubre de 2024
+
+Se investigaron las diferentes alternativas para implementar la capa de
+transporte. Se eligió probar WiFi Direct como capa de transporte para el prototipo por las razones detalladas en el \cref{subsec:transport-decision}.
+
+### Sprint 2: Del 7 al 13 de Octubre de 2024
+
+Se desarrolló un prototipo de aplicación en Android que conectara dos
+dispositivos y enviara un mensaje entre ellos.
+
+Tras la reunión de revisión del sprint se decidió afrontar la implementación
+inicial en Linux.
+
+### Sprint 3: Del 15 al 21 de Diciembre de 2024
+
+Se creó el repositorio principal (independiente al prototipo). Se investigó el
+estado de la comunicación via D-Bus en Linux, y se crearon las primeras
+interfaces usando zbus, consiguiendo un listado de dispositivos adyacentes.
+
+Las pruebas iniciales revelaron problemas inesperados (descritos en el
+\cref{sec:restrictions}). Se encontraron problemas con zbus y se propusieron
+algunas soluciones (ver \cref{subsec:external-contributions}).
+
+### Sprint 4: Del 30 de Diciembre de 2024 al 5 de Enero de 2025
+
+Este sprint por razones obvias (navidad) no hubo reunión de *Sprint Planning*.
+Se depuraron los problemas de comunicación con D-Bus.
+
+### Sprint 5: Del 6 al 12 de Enero de 2025
+
+Se hizo mucho progreso en la depuración, y se consiguió conectar el ordenador
+de sobremesa del autor con su portátil (ambos corriendo Linux), descubriendo
+problemas nuevos, como que WiFi direct en sí mismo no proporciona la dirección
+IP de los dispositivos, por lo que tiene que ser derivada de alguna otra
+manera. Ver \cref{subsec:dhcp} para algunos de los detalles al respecto.
+
+### Sprint 6: Del 20 al 26 de Enero de 2025
+
+Se mejoró la demo de DBus para soportar reintento de conexiones. También se
+depuró wpa_supplicant para intentar entender algunos de los problemas descritos
+anteriormente.
+
+### Sprint 7: Del 10 al 16 de Febrero de 2025
+
+Se consiguió establecer una comunicación UDP entre dispositivos via direcciones
+de link local \cite{rfc4862} (sección 5.3).
+
+También se creó la infraestructura para la documentación del proyecto (portada
+del proyecto, `Makefile`, secciones iniciales con \LaTeX...).
+
+### Sprint 8: Del 17 al 23 de Febrero de 2025
+
+Se hizo progreso en poder probar la capa de transporte. Se descubrió la razón
+por la que el código funcionaba en uno de los ordenadores del autor pero no en
+el otro (ver \cref{subsec:dhcp}).
+
+Se empezó a estructurar el código para prepararlo para ser reutilizado.
+
+### Sprint 9: Del 24 de Febrero al 2 de Marzo de 2025
+
+Se avanzó en la documentación, creando el glosario y compartiendo la estructura
+con otros alumnos.
+
+### Sprint 10: Del 3 al 9 de Marzo de 2025
+
+Se creó la infraestructura para la bibliografía de la memoria, y se hizo algo
+de progreso al respecto.
+
+Se dividió la estructura del código en una biblioteca y una aplicación de
+ejemplo.
+
+### Sprint 11: Del 24 al 30 de Marzo de 2025
+
+Se implementó el protocolo binario de paso de mensajes y se implementaron
+notificaciones para el manejo del grupo en la librería.
+
+### Sprint 12: Del 1 al 7 de Abril de 2025
+
+Se elaboró una interfaz de paso de mensajes independiente a la capa de
+transporte.
+
+### Sprint 13: Del 5 al 11 de Mayo de 2025
+
+Se depuró un error de memoria y se mejoró la infraestructura de pruebas para
+integrar rr (ver \cref{subsec:rr}) y \Gls{ASan}.
+
+### Sprint 14: Del 12 al 18 de Mayo de 2025
+
+Se implementó la gestión básica de grupos, y se implementó funcionalidad para
+auto-unirse a un grupo en wpa_supplicant (ver
+\cref{subsec:external-contributions}).
+
+### Sprint 15: Del 26 de Mayo al 1 de Junio de 2025
+
+Se implementó una interfaz básica de pruebas usando GTK, para poder probar
+situaciones con más de dos dispositivos por grupo físico más fácilmente.
+
+### Sprint 16: Del 9 al 15 de Junio 2025
+
+Se creó la aplicación básica de Android con un esqueleto básico del backend
+para Android.
+
+### Sprint 17: Del 16 al 22 de Junio 2025
+
+Se integró mucho más profundamente la librería con Java, incluyendo poder
+incluir y llamar al código de Rust desde la aplicación. La biblioteca aún no
+era funcional.
+
+### Sprint 18: Del 23 al 29 de Junio 2025
+
+Se consiguió una integración básica en Android y se creó infraestructura para
+poder testear Android con un sólo teléfono (comunicando el dispositivo Android
+con Linux) para poder hacer progreso sin tener dos dispositivos.
+
+Se ajustó el descubrimiento de direcciones para soportar IPv4 también, ya que
+Android usa DHCP + IPv4 por defecto.
+
+### Sprint 19: Del 7 al 13 de Julio 2025
+
+Se hizo algo de progreso en tener la librería funcional en Android, arreglando
+la gestión de grupos.
+
+### Sprint 20: Del 14 al 20 de Julio 2025
+
+Se implementó la identidad y firma de mensajes, y se investigó el cifrado de
+mensajes también. Se implementaron varias APIs de Android también.
+
+### Sprint 21: Del 21 al 27 de Julio 2025
+
+Se implementaron muchas mejoras de interfaz en Android y se implementó el juego
+2048, que se demostró a los tutores en la retrospectiva del *sprint*.
+
+### Sprint 22: Del 5 al 11 de Agosto de 2025
+
+Se empezó con la redacción más completa de la memoria, integrando también
+varias mejoras (soporte para código, etc) a la misma.
+
+### Sprint 23: Del 12 al 18 de Agosto de 2025
+
+Se implementó y documentó el cifrado de mensajes punto a punto y el intercambio
+de claves. Se envió a `wpa_supplicant` una mejora necesaria para ello (ver
+\cref{subsec:external-contributions}), y se verificó que la aplicación de
+Android funcionaba con mensajes cifrados.
+
+Todo el tiempo desde entonces se ha empleado en la documentación del trabajo.
+
+# Conclusión
+
+El uso de la metodología inspirada en Scrum en este proyecto ha permitido una
+planificación y desarrollo ágil del mismo, con una buena adaptación a los
+cambios y una mejora continua del producto.
+
+No hay ninguna duda de que el uso de Scrum ha sido una buena elección para el
+proyecto. Las frecuentes reuniones de revisión de los sprints (semanales) han
+permitido una buena comunicación con los tutores y atajar muchos problemas
+antes de que se convirtieran en grandes obstáculos.
+
+En la práctica, siendo un desarrollo individual, se han podido tomar atajos que
+en una aplicación más estricta de la metodología no sería posible (como
+saltarse sprints, o replanificar a mitad de sprint). Algunos de estos atajos
+recuerdan más a Kanban \cite{kanban} que a Scrum, más orientado a un flujo de
+trabajo continuo.
+
+El autor usa metodologías ágiles en su trabajo, y considera que usar una
+versión más estricta del Scrum como se podía haber hecho (requiriendo
+estructurar mucho más el backlog, anotar cada tarea con estimaciones, no
+replanificar a mitad de *sprint*) hubiera sido un error, especialmente dadas
+las restricciones temporales. Usar metodologías no ágiles tampoco hubiera sido
+factible, por las mismas razones.

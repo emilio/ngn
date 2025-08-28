@@ -154,6 +154,7 @@ esperaba en un alto espectro de áreas: arquitectura y estándares de redes,
 criptografía, desarrollo en Android, comunicación entre procesos via DBus.
 
 ## Contribuciones a proyectos externos
+\label{subsec:external-contributions}
 
 Una de las partes más gratificantes de este proyecto ha sido salir del
 ecosistema donde el autor suele manejarse en su día a día (navegadores y
@@ -170,6 +171,7 @@ pendiente](https://github.com/dbus2/zbus/pull/1189) y
 código](https://github.com/dbus2/zbus/issues/1180).
 
 # Línea de tiempo alternativa
+\label{sec:alternate-timeline}
 
 Hay una cosa en particular que, con el beneficio de mirar hacia atrás, tal
 vez hubiera hecho de manera diferente (o al menos me gustaría tener una bola de

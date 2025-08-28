@@ -237,6 +237,10 @@ cometer una gran cantidad de errores (muchos de los diagramas generados no
 compilaban) generó diagramas correctos a grandes rangos, lo que fue útil como
 punto de partida.
 
+También se ha utilizado para producir un resumen inicial del log de git, con
+resultados similares (resultados aceptables como punto de partida, pero una
+gran cantidad de revisión necesaria).
+
 ### Documentación: rustdoc
 
 [rustdoc](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) es la

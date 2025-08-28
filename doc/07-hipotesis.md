@@ -44,6 +44,7 @@ Similarmente, el requisito de que funcione en plataformas móviles fuerza a usar
 determinadas APIs de esos sistemas operativos.
 
 ## Restricciones técnicas: Transporte inicial y limitaciones del sistema operativo
+\label{subsec:transport-decision}
 
 A la hora de realizar la elección de qué capa de transporte usar inicialmente
 para esta biblioteca, se eligió WiFi Direct por una variedad de razones:
@@ -65,6 +66,7 @@ expandir la red usando una variedad de transportes físicos (implementar
 Bluetooth, y usar Bluetooth como conexión entre dos grupos).
 
 ## Restricciones técnicas: Acceso a identificadores
+\label{subsec:macaddr-restrictions}
 
 Otra restricción interesante que cambió el diseño de la interfaz es que Android
 [restringe el acceso a la dirección MAC del
@@ -125,13 +127,24 @@ testear localmente con múltiples instancias.
 ## Restricciones técnicas: DHCP 
 \label{subsec:dhcp}
 
-Con la intención de simplificar la capa de transporte, inicialmente se intentó
-usar direcciones de link local de IPv6 \cite{rfc4862} (sección 5.3).
+WiFi Direct no asigna ninguna dirección IP en sí una vez se crea el grupo
+físico. Eso quiere decir que es el dispositivo el que tiene que saber de alguna
+manera la dirección del resto de los nodos.
+
+IPv6 permite descubrir vecinos via \gls{NDP} \cite{rfc4861}, lo cual parecía
+prometedor, pero los paquetes necesarios solo pueden ser creados por
+aplicaciones privilegiadas via
+[`CAP_NET_RAW`](https://man7.org/linux/man-pages/man7/capabilities.7.html).
+
+Tras investigar cómo Android conseguía comunicar la dirección IP del *Group
+Owner*, se se descubrió la opción de usar usar direcciones de link local de
+IPv6 \cite{rfc4862} (sección 5.3).
 
 Sin embargo, algunos servidores DHCP rompen esto por defecto, como
 [dhcpcd](https://github.com/NetworkConfiguration/dhcpcd). El autor sugirió una
-[mejora](https://github.com/NetworkConfiguration/dhcpcd/issues/473) a este
-proyecto que se aceptó y resolvió rápidamente.
+[mejora](https://github.com/NetworkConfiguration/dhcpcd/issues/473) para
+facilitar la configuración correcta a este proyecto que se aceptó y resolvió
+rápidamente.
 
 ## Restricciones de usabilidad: Permisos en Android
 
@@ -199,10 +212,8 @@ requeriría bastante trabajo extra, descrito a continuación.
 
  * Coordinación con distribuciones para que los servidores DHCP usen
    direcciones de link local por defecto para conexiones P2P o formas
-   alternativas de descubrir direcciones. Usar \Gls{NDP} \cite{rfc4861} sería
-   una opción, pero los paquetes necesarios solo pueden ser creados por
-   aplicaciones privilegiadas via
-   [`CAP_NET_RAW`](https://man7.org/linux/man-pages/man7/capabilities.7.html).
+   alternativas de descubrir direcciones como \Gls{NDP}, ver
+   \cref{subsec:dhcp}.
 
 ### Android:
 
