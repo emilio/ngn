@@ -171,7 +171,7 @@ código](https://github.com/dbus2/zbus/issues/1180).
 
 # Línea de tiempo alternativa
 
-Hay una cosa en particular la cual, con el beneficio de mirar hacia atrás, tal
+Hay una cosa en particular que, con el beneficio de mirar hacia atrás, tal
 vez hubiera hecho de manera diferente (o al menos me gustaría tener una bola de
 cristal para comparar la versión alternativa).
 

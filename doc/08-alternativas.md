@@ -158,7 +158,7 @@ recomendado en la documentación oficial:
 ## Toolkit de interfaz de usuario para Linux
 \label{subsec:gtk-alternatives}
 
-Se usó GTK para la interfaz de usuario en Linux (ver \cref{subsec:gtk}).
+Se usó \gls{GTK} para la interfaz de usuario en Linux (ver \cref{subsec:gtk}).
 
 La demo de Linux intencionadamente es extremadamente sencilla, siendo su mayor
 utilidad probar el protocolo sin tener que compilar Android y usar varios

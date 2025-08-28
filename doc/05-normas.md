@@ -50,9 +50,9 @@ mejorar continuamente el proceso.
 
 ### Aplicación de Scrum al TFG
 
-En el caso de este TFG, el *Product Owner* es el co-tutor del TFG, Guillermo
-González Talaván, mientras que el autor del TFG asume los roles de *Scrum
-Master* y equipo de desarrollo.
+En el caso de este TFG, los *Product Owner* son los co-tutores del TFG,
+mientras que el autor del TFG asume los roles de *Scrum Master* y equipo de
+desarrollo.
 
 Los sprints han tenido una duración de una semana, al final de los cuales tenía
 lugar una reunión de revisión de sprint con el co-tutor en la que se revisaban
@@ -169,7 +169,7 @@ Se ha usado [Jetpack Compose](https://developer.android.com/compose) para la
 interfaz de usuario en la demo de Android. Es el toolkit recomendado por Google
 para el desarrollo de aplicaciones Android.
 
-### Toolkit de interfaz de usuario: GTK
+### Toolkit de interfaz de usuario: \gls{GTK}
 \label{subsec:gtk}
 
 Se ha usado [GTK](https://www.gtk.org/) junto con

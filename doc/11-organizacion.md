@@ -61,8 +61,8 @@ sido de esperar, en parte por todas las complicaciones descritas en el
 
 Junto con la capa de transporte se creó un cliente básico en `examples/dbus`
 con el propósito de testearla, que eventualmente se convertiría en una pequeña
-interfaz de usuario usando GTK para testear casos más complejos con múltiples
-miembros.
+interfaz de usuario usando \gls{GTK} para testear casos más complejos con
+múltiples miembros.
 
 ### Creación de abstracciones
 
