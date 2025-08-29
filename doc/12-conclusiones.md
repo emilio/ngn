@@ -226,6 +226,9 @@ Una serie de mejoras concretas que al autor le gustaría ver en Android serían:
 
  * Soporte para múltiples grupos de WiFi Direct en Android: WiFi Aware permite
    el equivalente, que podría ser una alternativa.
+ * Parece que las asociaciones de WiFi Direct se almacenan persistentemente a
+   nivel del sistema, e indefinidamente, lo cual puede ser no ideal para casos
+   de uso ad-hoc.
  * Hacer el servicio de localización no requerido para usar WiFi Direct / WiFi
    Aware.
  * Permitir conexión entre dispositivos no conocidos sin interacción de

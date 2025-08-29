@@ -4,7 +4,7 @@ TEX_TARGETS := $(wildcard *.tex) $(MD_TARGETS:%.md=build/%.tex)
 PDF_TARGETS := $(wildcard images/*.pdf) $(MERMAID_TARGETS:%.mmd=build/%.pdf)
 
 .PHONY: build
-build: build/main.pdf
+build: build/main.pdf build/slides.pdf
 
 .PHONY: clean
 clean:
@@ -17,6 +17,10 @@ cleanbuild: clean build
 build/main.pdf: $(TEX_TARGETS) $(PDF_TARGETS) build/pandoc-macros.tex $(wildcard res/*) bibliography.bib
 	@mkdir -p $(@D)
 	latexmk -bibtex -pdf -jobname=build/main main
+
+build/slides.pdf: slides.md $(PDF_TARGETS)
+	@mkdir -p $(@D)
+	pandoc $< --to beamer -o $@ --pdf-engine=lualatex
 
 # This is a bit hacky. Pandoc generates latex output but relies on a set of
 # macros to be present on the document via $highlighting-macros$.
