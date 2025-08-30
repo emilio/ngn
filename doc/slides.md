@@ -4,7 +4,7 @@ subtitle: Library for direct communication between devices based on P2P technolo
 author: Emilio Cobos Álvarez
 date: Septiembre de 2025
 institute:
- - Grado en ingeniería Informática
+ - Grado en Ingeniería Informática
  - Universidad de Salamanca
 titlegraphic: res/usal-logo.pdf
 hyperrefoptions:
