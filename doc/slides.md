@@ -245,7 +245,8 @@ pub trait P2PSession: ... {
    naipes 🫠.
  * Creo que hay hueco / demanda para una librería como la propuesta, si bien
    requiere mucho más trabajo de implementación (Windows, Bluetooth, WiFi aware...).
- * Hay mucho por hacer a nivel de plataforma e interoperabilidad también,   la presión regulatoria via DMA puede mejorar la situación.
+ * Hay mucho por hacer a nivel de plataforma e interoperabilidad también, la
+   presión regulatoria via DMA puede mejorar la situación.
  * He aprendido mucho más de lo que esperaba haciendo este proyecto.
 
 :::
