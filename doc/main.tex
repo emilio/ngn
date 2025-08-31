@@ -14,6 +14,17 @@
 \usepackage{listings}
 \usepackage{minted}
 \usepackage{amsmath}
+\usepackage{fancyhdr}
+
+\fancypagestyle{certificate}{
+  \fancyhead[L]{
+    \includegraphics[width=0.2\textwidth]{images/usal-logo.pdf}
+  }
+  \fancyhead[R]{
+    \includegraphics[width=0.3\textwidth]{images/fciencias-logo.pdf}
+  }
+  \renewcommand{\headrulewidth}{0pt}
+}
 
 \usepackage[toc,titletoc,page]{appendix}
 \addto\extrasspanish{
@@ -102,7 +113,7 @@
 
   \vspace{2em}
 
-  \includegraphics[width=0.5\textwidth]{res/usal-logo.pdf}
+  \includegraphics[width=0.5\textwidth]{images/usal-logo.pdf}
 
   \vspace{2em}
 

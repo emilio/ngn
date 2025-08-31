@@ -6,7 +6,6 @@ date: Septiembre de 2025
 institute:
  - Grado en Ingeniería Informática
  - Universidad de Salamanca
-titlegraphic: res/usal-logo.pdf
 hyperrefoptions:
  - pdfusetitle
  - pdfpagemode=FullScreen
