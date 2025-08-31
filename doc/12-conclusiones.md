@@ -174,8 +174,9 @@ código](https://github.com/dbus2/zbus/issues/1180).
 \label{sec:alternate-timeline}
 
 Hay una cosa en particular que, con el beneficio de mirar hacia atrás, tal
-vez hubiera hecho de manera diferente (o al menos me gustaría tener una bola de
-cristal para comparar la versión alternativa).
+vez hubiera hecho de manera diferente (o al menos me gustaría tener el [espejo
+de Galadriel](https://es.wikipedia.org/wiki/Espejo_de_Galadriel) para ver la
+versión alternativa).
 
 La decisión que más ha marcado tanto el tiempo como la dirección técnica del
 proyecto ha sido sin lugar a dudas la de comenzar por una abstracción de la
