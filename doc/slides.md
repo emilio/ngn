@@ -58,12 +58,12 @@ Todos tenemos una radio portátil.
 
 ::: incremental
 
- * Apps de *contact tracing* durante la pandemia usaban Bluetooth LE.
- * *FireChat* en las protestas de Hong Kong de 2014.
- * *Nearby Share* en Android usa WiFi Direct.
- * *AirDrop* usa AWDL.
- * Meshtastic.
- * MANETS de uso militar.
+ * Apps de *contact tracing* durante la pandemia usaban Bluetooth LE
+ * *FireChat* en las protestas de Hong Kong de 2014
+ * *Nearby Share* en Android usa WiFi Direct
+ * *AirDrop* usa AWDL
+ * Meshtastic
+ * MANETS de uso militar
 
 :::
 
@@ -109,7 +109,7 @@ Y una aplicación demostrativa.
 
 ::: incremental
 
- * Lenguajes: Rust + Java + Kotlin (+ C)
+ * Lenguajes: Rust, Java, Kotlin, C
  * Control de versiones: Git
  * UI: GTK, Jetpack Compose
  * Depuración: rr
@@ -129,16 +129,11 @@ Se ha elegido *Scrum* con sprints semanales como metodología de desarrollo
 # Interfaz principal
 
 ```rust
-#[async_trait::async_trait]
 pub trait P2PSession: ... {
- async fn new(...,
-  listener: Arc<dyn P2PSessionListener<Self>>
- ) -> GenericResult<Arc<Self>>;
- async fn discover_peers(&self) -> GenericResult<()>;
- async fn connect_to_peer(&self, id: PeerId)
-  -> GenericResult<()>;
- async fn message_peer(&self, id: PeerId, msg: &[u8])
-  -> GenericResult<()>;
+ fn new(..., listener) -> Result<Self>;
+ fn discover_peers(&self) -> Result;
+ fn connect_to_peer(&self, id: PeerId) -> Result;
+ fn message_peer(&self, id: PeerId, msg: &[u8]) -> Result;
 }
 ```
 
@@ -166,15 +161,15 @@ pub trait P2PSession: ... {
 
 ::: incremental
 
- * Android usa IPv4 + DHCP por defecto.
+ * Android usa IPv4 + DHCP por defecto
 
  * IPv6 Neighbor discovery (ICMPv6): Requiere `CAP_NET_RAW` en Linux, imposible
-   in Android.
+   in Android
 
  * IPv6 Link Local Address
-   * Depende de la configuración del dhcp del GO.
-   * Android no expone la dirección MAC de la interfaz.
-   * Linux no expone la MAC del GO.
+   * Depende de la configuración del dhcp del GO
+   * Android no expone la dirección MAC de la interfaz
+   * Linux no expone la MAC del GO
 
 :::
 
@@ -184,15 +179,15 @@ pub trait P2PSession: ... {
 
 ::: incremental
 
- * Permisos necesarios para interactuar con `wpa_supplicant`.
- * Interacción entre `NetworkManager` y `wpa_supplicant` (issue reportada).
+ * Permisos necesarios para interactuar con `wpa_supplicant`
+ * Interacción entre `NetworkManager` y `wpa_supplicant` (issue reportada)
  * API de D-Bus de `wpa_supplicant` subóptima:
    * Gestión de errores pobre (fix enviado y aceptado ✅)
    * No soporta auto-join (fix enviado y aceptado ✅)
    * No expone la MAC del dispositivo propio (fix enviado, pendiente)
    * No expone la MAC de la interfaz del GO (fix enviado, pendiente)
- * Configuración de dhcp (issue reportada y arreglada por upstream ✅).
- * Mejoras de rendimiento en zbus aceptadas ✅.
+ * Configuración de dhcp (issue reportada y arreglada por upstream ✅)
+ * Mejoras de rendimiento en zbus aceptadas ✅
 
 :::
 
@@ -202,13 +197,13 @@ pub trait P2PSession: ... {
 
 ::: incremental
 
- * Excesivos permisos necesarios.
- * Interacción de usuario requerida.
- * Soporte sólo para un grupo físico.
- * Servicios de ubicación activados necesario.
- * No expone MAC del dispositivo propio.
- * No expone MAC de la interfaz propia ni del GO.
- * Grupos previos almacenados global e indefinidamente.
+ * Excesivos permisos necesarios
+ * Interacción de usuario requerida
+ * Soporte sólo para un grupo físico
+ * Servicios de ubicación activados necesario
+ * No expone MAC del dispositivo propio
+ * No expone MAC de la interfaz propia ni del GO
+ * Grupos previos almacenados global e indefinidamente
 
 :::
 
@@ -218,12 +213,12 @@ pub trait P2PSession: ... {
 
 ::: incremental
 
- * Imposible testear en un emulador.
+ * Imposible testear en un emulador
  * Testear en Linux requiere:
    * Desconectar `NetworkManager`
    * Desconectar `wpa_supplicant`
    * Una instancia de `wpa_supplicant`, `dbus-daemon`, y `mac80211_hwsim` por
-     cada nodo a controlar.
+     cada nodo a controlar
 
 :::
 
@@ -241,11 +236,28 @@ pub trait P2PSession: ... {
 
  * Interesante salir fuera de los estándares web y darse cuenta de que otras
    partes de la tecnología que usamos todos los días también son una casa de
-   naipes 🫠.
- * Creo que hay hueco / demanda para una librería como la propuesta, si bien
+   naipes 🫠
+ * Creo que hay hueco / demanda para una biblioteca como la propuesta, si bien
    requiere mucho más trabajo de implementación (Windows, Bluetooth, WiFi aware...).
  * Hay mucho por hacer a nivel de plataforma e interoperabilidad también, la
-   presión regulatoria via DMA puede mejorar la situación.
- * He aprendido mucho más de lo que esperaba haciendo este proyecto.
+   presión regulatoria via DMA puede mejorar la situación
+ * He aprendido mucho más de lo que esperaba haciendo este proyecto
 
 :::
+
+<!--
+
+ * Mi proyecto destaca por XXX
+ * Mencionar $dayjob
+ * Impacto: Mostrar ruta de un mensaje
+ * Quitar puntos al final de los bullet points
+ * Zoom al diagrama
+ * s/librería/biblioteca
+ * Diagrama grupo físico / lógico
+ * Demostración: Mostrar mejor los móviles, video fallback
+ * No ehm (hablar más despacio)...
+ * Mencionar huella de carbono
+ * Sección de problemas, reword como soluciones
+ * XKCD
+
+-->
