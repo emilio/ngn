@@ -23,6 +23,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            cargo.profile = "release"
         }
     }
     compileOptions {
