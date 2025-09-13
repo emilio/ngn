@@ -21,6 +21,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresPermission;
 import androidx.core.content.ContextCompat;
@@ -317,13 +318,13 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         ContextCompat.registerReceiver(m_context, this, m_intentFilter, ContextCompat.RECEIVER_EXPORTED);
     }
 
-    // NOTE: called via the JNI.
+    @Keep
     private void resolveResult(Object onResult, boolean success) {
         //noinspection unchecked
         ((Function<Boolean, Void>) onResult).apply(success);
     }
 
-    // NOTE: called via the JNI.
+    @Keep
     private void notifyPeersChanged(String[] peerDetails) {
         final ArrayList<Peer> peerArrayList = new ArrayList<>();
         for (int i = 0; i < peerDetails.length; i += 3) {
@@ -332,7 +333,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
         m_listener.peersChanged(peerArrayList);
     }
 
-    // NOTE: called via the JNI.
+    @Keep
     private void peerMessaged(String name, String mac_addr, String logicalId, byte[] message) {
         m_listener.messageReceived(new Peer(name, mac_addr, logicalId), message);
     }
@@ -347,6 +348,7 @@ public class NgnSessionProxy extends BroadcastReceiver implements WifiP2pManager
     }
 
     @RequiresPermission(allOf = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES})
+    @Keep
     public void discoverPeers(long aNativePromise) {
         discoverPeers(new ActionListenerNativeAdapter(aNativePromise));
     }
