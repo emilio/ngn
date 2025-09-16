@@ -1,0 +1,41 @@
+flowchart TD
+    A1["_gateway<br>(10.159.113.200)<br>3.5 ms"]
+    A3["172.29.247.1<br>(172.29.247.1)<br>73.3 ms"]
+
+    A6a["ae9.pr03.mad1.tfbnw.net<br>(103.4.99.216)<br>63.7 ms"]
+    A6b["ae0.pr02.mad2.tfbnw.net<br>(157.240.83.96)<br>69.4 ms"]
+    A6c["ae2.pr04.mad1.tfbnw.net<br>(157.240.69.46)<br>69.4 ms"]
+
+    A7a["po208.asw02.mad2.tfbnw.net<br>(129.134.101.238)<br>69.4 ms"]
+    A7b["po203.asw02.mad1.tfbnw.net<br>(129.134.99.134)<br>264.7 ms"]
+    A7c["po208.asw02.mad1.tfbnw.net<br>(129.134.101.236)<br>255.2 ms"]
+
+    A8a["psw03.mad1.tfbnw.net<br>(173.252.66.198)<br>255.1 ms"]
+    A8b["psw01.mad1.tfbnw.net<br>(173.252.66.199)<br>255.1 ms"]
+
+    A9a["msw1ad.01.mad1.tfbnw.net<br>(129.134.63.97)<br>255.1 ms"]
+    A9b["msw1ar.01.mad1.tfbnw.net<br>(129.134.93.91)<br>255.1 ms"]
+    A9c["msw1ai.01.mad1.tfbnw.net<br>(129.134.61.231)<br>61.0 ms"]
+
+    %% Hops with direct connections
+    A1 --> A3
+
+    %% Parallel routes on hop 6
+    A3 --> A6a
+    A3 --> A6b
+    A3 --> A6c
+
+    %% Parallel routes on hop 7
+    A6a --> A7a
+    A6b --> A7b
+    A6c --> A7c
+
+    %% Parallel routes on hop 8
+    A7a --> A8a
+    A7b --> A8b
+    A7c --> A8a
+
+    %% Parallel routes on hop 9
+    A8a --> A9a
+    A8b --> A9b
+    A8a --> A9c

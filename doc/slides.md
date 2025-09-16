@@ -26,17 +26,31 @@ Todos tenemos una radio portátil.
 
 ---
 
-# Ventajas de la comunicación P2P
+# Ventajas I: Privacidad y resiliencia
 
 ## Privacidad
 
- * Tus datos no tienen que pasar por servidores centralizados.
+ * Tus datos no tienen que pasar por servidores centralizados
+ * Immune a censura gubernamental y judicial como puede pasar en Irán, China...
+   O en España si hay Liga ⚽
 
 ## No necesita infraestructura
 
  * Usable en ubicaciones remotas
  * En caso de emergencia
  * O durante apagones 🫠
+
+---
+
+# Ventajas II: Eficiencia
+
+\centering
+
+\begin{figure}
+\includegraphics[height=6cm, keepaspectratio, viewport=0 200pt 600pt 792pt, clip=true]{build/images/tracert-whatsapp.pdf}
+\end{figure}
+
+\centering \tiny Traceroute a web.whatsapp.com
 
 ---
 
@@ -62,8 +76,8 @@ Todos tenemos una radio portátil.
  * *FireChat* en las protestas de Hong Kong de 2014
  * *Nearby Share* en Android usa WiFi Direct
  * *AirDrop* usa AWDL
- * Meshtastic
  * MANETS de uso militar
+ * Meshtastic
 
 :::
 
@@ -75,10 +89,10 @@ Se hipotetiza que la baja adopción de este tipo de es por:
 
 ::: incremental
 
- * Dificultad de desarrollo.
- * Soporte para hardware variable.
- * Poca interoperabilidad entre plataformas.
- * Intereses económicos.
+ * Dificultad de desarrollo
+ * Soporte para hardware variable
+ * Poca interoperabilidad entre plataformas
+ * Intereses económicos
 
 :::
 
@@ -137,11 +151,19 @@ pub trait P2PSession: ... {
 }
 ```
 
+# WiFi Direct
+
+\begin{figure}
+\includegraphics[height=6cm, keepaspectratio]{images/example-wifi-direct-network.png}
+\end{figure}
+
 ---
 
-# Conexión
+# Conexión (simplificada)
 
-![Flujo de conexión](build/images/01-flux.pdf)
+\begin{figure}
+\includegraphics[width=\textwidth, height=\textheight, keepaspectratio, viewport=0px 300pt 612pt 792pt, clip=true]{build/images/01-flux.pdf}
+\end{figure}
 
 ---
 
@@ -157,14 +179,14 @@ pub trait P2PSession: ... {
 
 ---
 
-# Problemas I: Asignación de direcciones
+# Obstáculos I: Asignación de direcciones
 
 ::: incremental
 
  * Android usa IPv4 + DHCP por defecto
 
  * IPv6 Neighbor discovery (ICMPv6): Requiere `CAP_NET_RAW` en Linux, imposible
-   in Android
+   en Android
 
  * IPv6 Link Local Address
    * Depende de la configuración del dhcp del GO
@@ -175,7 +197,7 @@ pub trait P2PSession: ... {
 
 ---
 
-# Problemas II: Linux
+# Obstáculos II: Linux
 
 ::: incremental
 
@@ -193,7 +215,7 @@ pub trait P2PSession: ... {
 
 ---
 
-# Problemas III: Android
+# Obstáculos III: Android
 
 ::: incremental
 
@@ -209,11 +231,11 @@ pub trait P2PSession: ... {
 
 ---
 
-# Problemas IV: Pruebas
+# Obstáculos IV: Pruebas
 
 ::: incremental
 
- * Imposible testear en un emulador
+ * Imposible testear en un emulador Android
  * Testear en Linux requiere:
    * Desconectar `NetworkManager`
    * Desconectar `wpa_supplicant`
@@ -226,38 +248,37 @@ pub trait P2PSession: ... {
 
 # Demostración: Juego multijugador off-line
 
-![Game screen](images/app-screenshot-05-game.jpg)
+\begin{figure}
+\includegraphics[height=6cm, keepaspectratio]{images/app-screenshot-05-game.jpg}
+\end{figure}
 
 ---
 
-# Conclusiones
+# Conclusiones I
 
 ::: incremental
 
- * Interesante salir fuera de los estándares web y darse cuenta de que otras
-   partes de la tecnología que usamos todos los días también son una casa de
-   naipes 🫠
  * Creo que hay hueco / demanda para una biblioteca como la propuesta, si bien
-   requiere mucho más trabajo de implementación (Windows, Bluetooth, WiFi aware...).
- * Hay mucho por hacer a nivel de plataforma e interoperabilidad también, la
-   presión regulatoria via DMA puede mejorar la situación
- * He aprendido mucho más de lo que esperaba haciendo este proyecto
+   requiere mucho más trabajo de implementación (Windows, Bluetooth, WiFi Aware...)
+ * Hay mucho por hacer a nivel de plataforma e interoperabilidad también
+ * La presión regulatoria de la DMA puede mejorar la situación
 
 :::
+
+---
+
+# Conclusiones II
+
+\begin{figure}
+\includegraphics[height=6cm, keepaspectratio]{images/dependency.png}
+\end{figure}
+
+\centering \tiny XKCD #2347: Dependency
 
 <!--
 
  * Mi proyecto destaca por XXX
- * Mencionar $dayjob
- * Impacto: Mostrar ruta de un mensaje
- * Quitar puntos al final de los bullet points
- * Zoom al diagrama
- * s/librería/biblioteca
  * Diagrama grupo físico / lógico
  * Demostración: Mostrar mejor los móviles, video fallback
- * No ehm (hablar más despacio)...
- * Mencionar huella de carbono
- * Sección de problemas, reword como soluciones
- * XKCD
 
 -->
